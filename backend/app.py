@@ -40,7 +40,7 @@ def bars_frame(symbol: str, count: int = 2000, timeframe: int | None = None, sta
         raise HTTPException(404, f"Símbolo '{symbol}' não existe no Market Watch. Confira o nome do broker.")
     if not info.visible and not mt5.symbol_select(symbol, True):
         raise HTTPException(400, f"Não foi possível selecionar {symbol}: {mt5.last_error()}")
-    rates = mt5.copy_rates_from_pos(symbol, timeframe or mt5.TIMEFRAME_M1, start_pos, min(max(count, 50), 100_000))
+    rates = mt5.copy_rates_from_pos(symbol, timeframe or mt5.TIMEFRAME_M1, start_pos, min(max(count, 50), 500_000))
     if rates is None or len(rates) == 0:
         raise HTTPException(502, "MT5 não retornou candles. Verifique histórico M1 e conexão.")
     frame = pd.DataFrame(rates)
@@ -48,6 +48,34 @@ def bars_frame(symbol: str, count: int = 2000, timeframe: int | None = None, sta
     frame.rename(columns={"tick_volume": "volume"}, inplace=True)
     frame.sort_values("time", inplace=True)
     return frame[["time", "open", "high", "low", "close", "volume"]]
+
+
+def history_months_frame(symbol: str, months: int) -> pd.DataFrame:
+    """Request the calendar range directly, then fall back to smaller terminal history reads."""
+    mt5_ready()
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        raise HTTPException(404, f"Símbolo '{symbol}' não existe no Market Watch.")
+    if not info.visible and not mt5.symbol_select(symbol, True):
+        raise HTTPException(400, f"Não foi possível selecionar {symbol}: {mt5.last_error()}")
+    end = pd.Timestamp.now(tz="UTC")
+    start = end - pd.DateOffset(months=months)
+    rates = mt5.copy_rates_range(symbol, mt5.TIMEFRAME_M1, start.to_pydatetime(), end.to_pydatetime())
+    if rates is None or len(rates) == 0:
+        range_error = str(mt5.last_error())
+        # Some terminals only expose already-cached bars to the Python bridge.
+        for amount in (250_000, 100_000, 50_000, 20_000, 5_000):
+            rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 1, amount)
+            if rates is not None and len(rates):
+                break
+        if rates is None or len(rates) == 0:
+            raise HTTPException(502, f"O MT5 não forneceu candles M1 para {months} meses. Erro do terminal: {range_error}; último erro: {mt5.last_error()}. Abra o gráfico M1 do símbolo, pressione Home para carregar histórico e confirme o limite Máx. barras no gráfico.")
+    frame = pd.DataFrame(rates)
+    frame["time"] = frame["time"].astype("int64")
+    frame.rename(columns={"tick_volume": "volume"}, inplace=True)
+    frame.sort_values("time", inplace=True)
+    frame.drop_duplicates("time", keep="last", inplace=True)
+    return frame[["time", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
 
 
 FVG_TIMEFRAMES = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30}
@@ -135,13 +163,28 @@ def market_data(symbol: str | None = None, fvg_tf: str = "M5", count: int = 500)
 
 class StrategyReportRequest(BaseModel):
     symbol: str = Field(default_factory=lambda: os.getenv("MT5_SYMBOL", "MNQ"), min_length=1, max_length=32)
-    count: int = Field(20_000, ge=500, le=100_000)
+    count: int = Field(500_000, ge=500, le=500_000)
+    period_months: int = Field(6, ge=6, le=12)
     cost_points_per_fill: float = Field(1.0, ge=0)
+
+
+def apply_history_window(frame: pd.DataFrame, months: int) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if frame.empty:
+        return frame, {"start": None, "end": None, "actual_months": 0.0, "coverage_ok": False}
+    last_time = pd.to_datetime(int(frame.time.iloc[-1]), unit="s", utc=True)
+    cutoff = last_time - pd.DateOffset(months=months)
+    window = frame.loc[frame.time >= int(cutoff.timestamp())].copy().reset_index(drop=True)
+    first_time = pd.to_datetime(int(window.time.iloc[0]), unit="s", utc=True) if len(window) else last_time
+    actual_months = max(0.0, (last_time - first_time).total_seconds() / (30.4375 * 86400))
+    return window, {"start": first_time.isoformat(), "end": last_time.isoformat(), "actual_months": round(actual_months, 2), "coverage_ok": actual_months >= months * 0.9}
 
 
 @app.post("/research/strategies")
 def research_strategies(req: StrategyReportRequest) -> dict[str, Any]:
-    frame = bars_frame(req.symbol, req.count, mt5.TIMEFRAME_M1, 1)
+    frame = history_months_frame(req.symbol, req.period_months)
+    frame, coverage = apply_history_window(frame, req.period_months)
+    if len(frame) < 1000:
+        raise HTTPException(400, f"Histórico insuficiente: {len(frame)} candles M1 para a janela solicitada de {req.period_months} meses.")
     info = mt5.symbol_info(req.symbol)
     analyzed, candidates = strategy_signals(frame, mintick=float(info.trade_tick_size or info.point) if info else 0.01)
     trend_state = np.sign(analyzed.ema20 - analyzed.ema50).fillna(0)
@@ -155,10 +198,13 @@ def research_strategies(req: StrategyReportRequest) -> dict[str, Any]:
         similar = evaluate_oos(analyzed, signal, req.cost_points_per_fill, same_regime)
         results.append({"name": name, **overall, "regime_trades": similar["trades"], "regime_win_rate": similar["win_rate"], "regime_net_points": similar["net_points"], "regime_profit_factor": similar["profit_factor"], "regime_max_drawdown_points": similar["max_drawdown_points"], "regime_score": similar["score"]})
     results.sort(key=lambda item: item["regime_score"], reverse=True)
-    eligible = [item for item in results if item["regime_trades"] >= 15 and item["regime_profit_factor"] >= 1.05 and item["regime_net_points"] > 0]
+    eligible = [item for item in results if coverage["coverage_ok"] and item["regime_trades"] >= 15 and item["regime_profit_factor"] >= 1.05 and item["regime_net_points"] > 0]
     best = eligible[0] if eligible else None
     last = analyzed.iloc[-1]
-    return {"symbol": req.symbol, "timeframe": "M1", "generated_at": int(datetime.now(timezone.utc).timestamp()), "sample_bars": len(analyzed), "validation": "Holdout cronológico: primeiro 70% para warmup; últimos 30% avaliados. Ranking filtrado por regime comparável ao atual.", "regime": {"trend": "alta" if current_trend > 0 else "baixa" if current_trend < 0 else "lateral", "volatility": "alta" if current_vol else "normal", "atr14": round(float(last.atr14), 4) if pd.notna(last.atr14) else None}, "best_candidate": best["name"] if best else None, "recommendation": f"No holdout e em barras com regime semelhante ao atual, o candidato que passou os filtros foi {best['name']}. Classificação estatística; não é garantia nem sinal de entrada." if best else "Nenhum candidato passou os critérios mínimos no regime atual. Sem recomendação para operar.", "criteria": "Mínimo de 15 entradas OOS em períodos historicamente semelhantes, PF >= 1,05 e pontos líquidos positivos; ranking por retorno ajustado ao drawdown e número de trades.", "strategies": results}
+    recommendation = (f"No holdout e em barras com regime semelhante ao atual, o candidato que passou os filtros foi {best['name']}. Classificação estatística; não é garantia nem sinal de entrada." if best else "Nenhum candidato passou os critérios mínimos no regime atual. Sem recomendação para operar.")
+    if not coverage["coverage_ok"]:
+        recommendation = f"O MT5 forneceu apenas {coverage['actual_months']} meses de candles para uma janela solicitada de {req.period_months}. A amostra está incompleta; não há recomendação confiável até aumentar o limite de barras do terminal e recarregar o histórico."
+    return {"symbol": req.symbol, "timeframe": "M1", "generated_at": int(datetime.now(timezone.utc).timestamp()), "sample_bars": len(analyzed), "requested_months": req.period_months, "coverage": coverage, "validation": "Holdout cronológico: primeiro 70% para warmup; últimos 30% avaliados. Ranking filtrado por regime comparável ao atual.", "regime": {"trend": "alta" if current_trend > 0 else "baixa" if current_trend < 0 else "lateral", "volatility": "alta" if current_vol else "normal", "atr14": round(float(last.atr14), 4) if pd.notna(last.atr14) else None}, "best_candidate": best["name"] if best and coverage["coverage_ok"] else None, "recommendation": recommendation, "criteria": "Mínimo de 15 entradas OOS em períodos historicamente semelhantes, PF >= 1,05 e resultado líquido positivo; ranking por retorno ajustado ao drawdown e número de trades.", "strategies": results}
 
 
 class SingleStrategyRequest(StrategyReportRequest):
@@ -167,13 +213,16 @@ class SingleStrategyRequest(StrategyReportRequest):
 
 @app.post("/research/backtest")
 def research_backtest(req: SingleStrategyRequest) -> dict[str, Any]:
-    frame = bars_frame(req.symbol, req.count, mt5.TIMEFRAME_M1, 1)
+    frame = history_months_frame(req.symbol, req.period_months)
+    frame, coverage = apply_history_window(frame, req.period_months)
+    if len(frame) < 1000:
+        raise HTTPException(400, f"Histórico insuficiente: {len(frame)} candles M1 para {req.period_months} meses.")
     info = mt5.symbol_info(req.symbol)
     analyzed, candidates = strategy_signals(frame, mintick=float(info.trade_tick_size or info.point) if info else 0.01)
     if req.strategy_name not in candidates:
         raise HTTPException(400, "Estratégia desconhecida. Consulte /research/strategies.")
     result = evaluate_oos(analyzed, candidates[req.strategy_name], req.cost_points_per_fill)
-    return {"trades": result["trades"], "win_rate": result["win_rate"], "net_profit": result["net_points"], "profit_factor": result["profit_factor"], "max_drawdown": result["max_drawdown_points"], "equity": [], "message": f"{req.strategy_name} · holdout OOS cronológico. {result['oos_bars']} candles de validação; entradas no próximo open; saída por sinal oposto. Port exploratório: sem sizing, stops/alvos do Pine, spread dinâmico ou limites diários."}
+    return {"trades": result["trades"], "win_rate": result["win_rate"], "net_profit": result["net_points"], "profit_factor": result["profit_factor"], "max_drawdown": result["max_drawdown_points"], "equity": [], "message": f"{req.strategy_name} · holdout OOS cronológico. {result['oos_bars']} candles de validação; amostra {coverage['start']} → {coverage['end']} ({coverage['actual_months']} meses). Entradas no próximo open; saída por sinal oposto. Port exploratório: sem sizing, stops/alvos do Pine, spread dinâmico ou limites diários."}
 
 
 def compute_backtest(frame: pd.DataFrame, fast: int, slow: int, req: BacktestRequest) -> dict[str, Any]:
