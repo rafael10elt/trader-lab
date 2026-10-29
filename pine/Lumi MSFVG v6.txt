@@ -1,5 +1,5 @@
 //@version=6
-strategy("Lumi MSFVG v6 Pro", shorttitle="Lumi v6 Pro", overlay=true, pyramiding=1, initial_capital=50000, currency=currency.USD, commission_type=strategy.commission.cash_per_contract, commission_value=0.62, slippage=3, margin_long=0, margin_short=0, calc_on_every_tick=true, process_orders_on_close=false, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+strategy("Lumi MSFVG v7 Pro", shorttitle="Lumi v7 Pro", overlay=true, pyramiding=1, initial_capital=50000, currency=currency.USD, commission_type=strategy.commission.cash_per_contract, commission_value=0.62, slippage=3, margin_long=0, margin_short=0, calc_on_every_tick=true, process_orders_on_close=false, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 //==============================================================================
 // 0. CONFIGURAÇÃO GERAL E LAYOUT
@@ -51,6 +51,8 @@ propBuffer   = input.float(300.0, "Margem de Segurança ($)", minval=50.0, group
 // 3. ESTRATÉGIA DANILO: REGRAS OPERACIONAIS E FILTROS "PULO DO GATO"
 //==============================================================================
 G_DANILO = "3. Regras Operacionais (Setup Danilo)"
+triggerMode = input.string("Rompimento 20 candles", "Gatilho de Entrada", options=["Rompimento 20 candles", "Pullback original (EMA 9/20)"], group=G_DANILO, tooltip="O rompimento replica o gatilho que liderou o relatório OOS. O pullback mantém as regras originais do Pine.")
+breakoutLength = input.int(20, "Período do Rompimento", minval=2, maxval=200, group=G_DANILO, tooltip="Compara o fechamento atual com a máxima/mínima das barras anteriores, sem incluir a barra atual.")
 useEarlyAlign = input.bool(true, "Operar somente no INÍCIO do Alinhamento", group=G_DANILO, tooltip="Pega apenas os primeiros pullbacks logo após o leque abrir.")
 maxBarsAlign  = input.int(35, "Máximo de barras após o alinhamento", minval=5, maxval=100, group=G_DANILO)
 
@@ -225,8 +227,20 @@ bool riskAllowed = (not useMaxLoss or dayPnl > -maxLossDay) and (not useMaxTrds 
 //==============================================================================
 // GATILHOS FINAIS
 //==============================================================================
-bool setupBull = stackBull and earlyAlignBull and touchedMaBull and ignitionBull and not tooFarFrom200 and not isEmbolado and htfLongOk and timeAllowed and riskAllowed and not isFlatTime
-bool setupBear = stackBear and earlyAlignBear and touchedMaBear and ignitionBear and not tooFarFrom200 and not isEmbolado and htfShortOk and timeAllowed and riskAllowed and not isFlatTime
+// Este gatilho acompanha o candidato "Rompimento · 20 candles" do relatório:
+// close acima/abaixo do extremo anterior e filtro direcional da média 50.
+float breakoutHigh = ta.highest(high[1], breakoutLength)
+float breakoutLow  = ta.lowest(low[1], breakoutLength)
+bool breakoutBull  = close > breakoutHigh and close > ma3
+bool breakoutBear  = close < breakoutLow and close < ma3
+
+bool useBreakoutTrigger = triggerMode == "Rompimento 20 candles"
+bool pullbackBull = stackBull and earlyAlignBull and touchedMaBull and ignitionBull and not tooFarFrom200 and not isEmbolado and htfLongOk
+bool pullbackBear = stackBear and earlyAlignBear and touchedMaBear and ignitionBear and not tooFarFrom200 and not isEmbolado and htfShortOk
+
+// Horário, limites de risco e zeragem continuam valendo para os dois gatilhos.
+bool setupBull = (useBreakoutTrigger ? breakoutBull : pullbackBull) and timeAllowed and riskAllowed and not isFlatTime
+bool setupBear = (useBreakoutTrigger ? breakoutBear : pullbackBear) and timeAllowed and riskAllowed and not isFlatTime
 
 bool enterLong  = setupBull and barstate.isconfirmed and strategy.opentrades == 0
 bool enterShort = setupBear and barstate.isconfirmed and strategy.opentrades == 0
@@ -247,7 +261,7 @@ if (enterLong or enterShort)
     bool isL = enterLong
     float entryPx = close
     
-    // Stop técnico protegido pela mínima/máxima da barra de ignição
+    // Stop técnico calculado com a barra de entrada e a barra anterior.
     float rawSL = isL ? (entryPx - math.min(low[0], low[1]) + 2.0) : (math.max(high[0], high[1]) - entryPx + 2.0)
     float slPts = math.min(maxSLPts, math.max(minSLPts, rawSL))
     float tpPts = slPts * rrRatio
@@ -307,7 +321,7 @@ if isFlatTime and strategy.opentrades > 0
 //==============================================================================
 var tSize = hudTxtSize == "Tiny" ? size.tiny : hudTxtSize == "Small" ? size.small : size.normal
 
-string stTxt = "AGUARDANDO SETUP"
+string stTxt = triggerMode == "Rompimento 20 candles" ? "AGUARDANDO ROMPIMENTO" : "AGUARDANDO SETUP"
 color  stBg  = #1e222d
 color  stFg  = color.silver
 

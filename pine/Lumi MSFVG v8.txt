@@ -1,0 +1,444 @@
+//@version=6
+strategy("Lumi MSFVG v8 Pro", shorttitle="Lumi v8 Pro", overlay=true, pyramiding=1, initial_capital=50000, currency=currency.USD, commission_type=strategy.commission.cash_per_contract, commission_value=0.62, slippage=3, margin_long=0, margin_short=0, calc_on_every_tick=true, process_orders_on_close=false, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+//==============================================================================
+// 0. CONFIGURAÇÃO GERAL E LAYOUT
+//==============================================================================
+G_GEN = "0. Configurações Gerais"
+opMode      = input.string("Strategy (Ordens Ativas)", "Modo do Script", options=["Strategy (Ordens Ativas)", "Indicador (Apenas Visual)"], group=G_GEN)
+hudLayout   = input.string("Horizontal (Rodapé)", "Layout do Painel", options=["Horizontal (Rodapé)", "Vertical (Lateral)"], group=G_GEN)
+hudTxtSize  = input.string("Small", "Tamanho da Fonte", options=["Tiny", "Small", "Normal"], group=G_GEN)
+showSignalMarkers = input.bool(true, "Desenhar sinais confirmados no gráfico", group=G_GEN)
+
+//==============================================================================
+// 1. HORÁRIO E FUSO OPERACIONAL
+//==============================================================================
+G_TIME = "1. Horários Operacionais"
+useTimeFilter = input.bool(true, "Ativar Controle de Horário", group=G_TIME, tooltip="DESATIVAR fará o robô operar 24h, o que reduz a assertividade.")
+tzSession     = input.string("Europe/Dublin", "Fuso Horário", options=["Europe/Dublin", "America/New_York", "America/Sao_Paulo", "UTC"], group=G_TIME)
+
+useW1         = input.bool(true, "Janela 1 (Principal)", inline="w1", group=G_TIME)
+w1Session     = input.session("1445-1630", "", inline="w1", group=G_TIME, tooltip="14:45-16:30 Dublin = 09:45-11:30 Nova York")
+
+useW2         = input.bool(false, "Janela 2 (Secundária)", inline="w2", group=G_TIME)
+w2Session     = input.session("1845-2030", "", inline="w2", group=G_TIME, tooltip="18:45-20:30 Dublin = 13:45-15:30 Nova York")
+
+useFlatNY     = input.bool(true, "Zerar Posições antes do Fechamento (NY)", inline="flt", group=G_TIME)
+flatNYHour    = input.int(1650, "Horário Flat (hhmm NY)", inline="flt", minval=1000, maxval=1700, group=G_TIME)
+
+//==============================================================================
+// 2. GESTÃO DE RISCO (MESA PROPRIETÁRIA)
+//==============================================================================
+G_RISK = "2. Gestão de Risco da Conta"
+riskUsd      = input.float(100.0, "Risco Fixo por Trade ($)", minval=10.0, step=10.0, group=G_RISK)
+ptVal        = input.float(2.0, "Valor do Ponto ($) [MNQ=2, NQ=20]", minval=0.1, step=0.5, group=G_RISK)
+rrRatio      = input.float(2.0, "Relação Risco : Retorno (R:R)", minval=1.0, step=0.25, group=G_RISK)
+minSLPts     = input.float(16.0, "Stop Mínimo (pts)", minval=5.0, step=1.0, group=G_RISK)
+maxSLPts     = input.float(45.0, "Stop Máximo (pts)", minval=10.0, step=5.0, group=G_RISK)
+maxContracts = input.int(10, "Limite Máximo de Contratos", minval=1, group=G_RISK)
+
+useMaxLoss   = input.bool(true, "Trava Perda Diária ($)", inline="dloss", group=G_RISK)
+maxLossDay   = input.float(300.0, "", minval=50.0, inline="dloss", group=G_RISK)
+useMaxTrds   = input.bool(true, "Máximo Trades/Dia", inline="dtrd", group=G_RISK)
+maxTrdsDay   = input.int(4, "", minval=1, inline="dtrd", group=G_RISK)
+useMaxConsec = input.bool(true, "Trava Perdas Consecutivas", inline="csec", group=G_RISK)
+maxConsec    = input.int(3, "", minval=1, inline="csec", group=G_RISK)
+
+usePropDD    = input.bool(true, "Monitorar Piso Trailing", group=G_RISK)
+propMaxDD    = input.float(2500.0, "Drawdown Total da Conta ($)", minval=500.0, group=G_RISK)
+propBuffer   = input.float(300.0, "Margem de Segurança ($)", minval=50.0, group=G_RISK)
+
+//==============================================================================
+// 3. ESTRATÉGIA DANILO: REGRAS OPERACIONAIS E FILTROS "PULO DO GATO"
+//==============================================================================
+G_DANILO = "3. Regras Operacionais (Setup Danilo)"
+triggerMode = input.string("Rompimento 20 candles", "Gatilho de Entrada", options=["Rompimento 20 candles", "Pullback original (EMA 9/20)"], group=G_DANILO, tooltip="O rompimento replica o gatilho que liderou o relatório OOS. O pullback mantém as regras originais do Pine.")
+breakoutLength = input.int(20, "Período do Rompimento", minval=2, maxval=200, group=G_DANILO, tooltip="Compara o fechamento atual com a máxima/mínima das barras anteriores, sem incluir a barra atual.")
+useEarlyAlign = input.bool(true, "Operar somente no INÍCIO do Alinhamento", group=G_DANILO, tooltip="Pega apenas os primeiros pullbacks logo após o leque abrir.")
+maxBarsAlign  = input.int(35, "Máximo de barras após o alinhamento", minval=5, maxval=100, group=G_DANILO)
+
+useDist200Filter = input.bool(true, "Pulo do Gato: Distância Máxima da 200", group=G_DANILO, tooltip="NÃO entra se o pullback acontecer muito longe da média de 200 (evita topos/fundos esticados).")
+maxDist200Atr    = input.float(3.2, "Distância Máxima Preço-SMA200 (x ATR)", minval=1.0, step=0.2, group=G_DANILO)
+
+useChopFilter = input.bool(true, "Filtrar Mercado Embolado (Chop)", group=G_DANILO, tooltip="Bloqueia entradas se as médias estiverem trançadas ou sem abertura.")
+chopSpreadAtr = input.float(0.8, "Abertura Mínima Médias 9-50 (x ATR)", minval=0.2, step=0.1, group=G_DANILO)
+
+//==============================================================================
+// 4. MATRIZ MULTI-TEMPO (M1, M5, M15, M30)
+//==============================================================================
+G_HTF = "4. Matriz de Tendência HTF"
+gateHtf = input.bool(true, "Exigir Alinhamento Macro (M15 e M30)", group=G_HTF)
+
+//==============================================================================
+// 5. MÉDIAS MÓVEIS (PADRÃO DANILO) E VWAP
+//==============================================================================
+G_EMA = "5. Configuração das 4 Médias e VWAP"
+showE1 = input.bool(true, "Média 1", inline="e1", group=G_EMA)
+typeE1 = input.string("EMA", "", options=["EMA", "SMA"], inline="e1", group=G_EMA)
+lenE1  = input.int(9, "", minval=1, inline="e1", group=G_EMA)
+colE1  = input.color(#000000, "", inline="e1", group=G_EMA)
+
+showE2 = input.bool(true, "Média 2", inline="e2", group=G_EMA)
+typeE2 = input.string("EMA", "", options=["EMA", "SMA"], inline="e2", group=G_EMA)
+lenE2  = input.int(20, "", minval=1, inline="e2", group=G_EMA)
+colE2  = input.color(#2962ff, "", inline="e2", group=G_EMA)
+
+showE3 = input.bool(true, "Média 3", inline="e3", group=G_EMA)
+typeE3 = input.string("EMA", "", options=["EMA", "SMA"], inline="e3", group=G_EMA)
+lenE3  = input.int(50, "", minval=1, inline="e3", group=G_EMA)
+colE3  = input.color(#787b86, "", inline="e3", group=G_EMA)
+
+showE4 = input.bool(true, "Média 4 (Macro)", inline="e4", group=G_EMA)
+typeE4 = input.string("EMA", "", options=["EMA", "SMA"], inline="e4", group=G_EMA)
+lenE4  = input.int(200, "", minval=1, inline="e4", group=G_EMA)
+colE4  = input.color(#f23645, "", inline="e4", group=G_EMA)
+
+showVwap = input.bool(true, "VWAP", inline="vw", group=G_EMA)
+colVwap  = input.color(color.orange, "", inline="vw", group=G_EMA)
+
+// Função auxiliar para cálculo de EMA ou SMA
+f_ma(float src, int len, string mType) =>
+    mType == "EMA" ? ta.ema(src, len) : ta.sma(src, len)
+
+ma1     = f_ma(close, lenE1, typeE1)
+ma2     = f_ma(close, lenE2, typeE2)
+ma3     = f_ma(close, lenE3, typeE3)
+ma4     = f_ma(close, lenE4, typeE4)
+vwapVal = ta.vwap(hlc3)
+atrVal  = nz(ta.atr(14))
+
+plot(showE1 ? ma1 : na, "Média 1 (9)", color=colE1, linewidth=2)
+plot(showE2 ? ma2 : na, "Média 2 (20)", color=colE2, linewidth=2)
+plot(showE3 ? ma3 : na, "Média 3 (50)", color=colE3, linewidth=2, style=plot.style_linebr)
+plot(showE4 ? ma4 : na, "Média 4 (200)", color=colE4, linewidth=3)
+plot(showVwap ? vwapVal : na, "VWAP", color=colVwap, linewidth=2)
+
+string atrStatus = atrVal < 14.0 ? "BAIXO" : atrVal > 40.0 ? "ALTO" : "IDEAL"
+color  atrCol    = atrVal < 14.0 ? color.red : atrVal > 40.0 ? color.orange : color.green
+
+//==============================================================================
+// CONTADORES DE TEMPO DAS VELAS (M1, M5, M15) EM TEMPO REAL
+//==============================================================================
+f_fmtTime(int totalSec) =>
+    int m = int(math.floor(totalSec / 60))
+    int s = totalSec % 60
+    (m < 10 ? "0" : "") + str.tostring(m) + ":" + (s < 10 ? "0" : "") + str.tostring(s)
+
+int remM1_s  = int(math.max(0, math.floor((60000 - (timenow % 60000)) / 1000)))
+int remM5_s  = int(math.max(0, math.floor((300000 - (timenow % 300000)) / 1000)))
+int remM15_s = int(math.max(0, math.floor((900000 - (timenow % 900000)) / 1000)))
+
+string clockStr = "M1: " + f_fmtTime(remM1_s) + " | M5: " + f_fmtTime(remM5_s) + " | M15: " + f_fmtTime(remM15_s)
+
+//==============================================================================
+// MATRIZ HTF SEM REPAINT (BARRA FECHADA [1])
+//==============================================================================
+f_calcHtfBias() =>
+    e20 = ta.ema(close, 20)
+    e50 = ta.ema(close, 50)
+    close > e20 and e20 > e50 ? 1 : (close < e20 and e20 < e50 ? -1 : 0)
+
+int biasM5  = nz(request.security(syminfo.tickerid, "5",  f_calcHtfBias()[1], lookahead=barmerge.lookahead_off))
+int biasM15 = nz(request.security(syminfo.tickerid, "15", f_calcHtfBias()[1], lookahead=barmerge.lookahead_off))
+int biasM30 = nz(request.security(syminfo.tickerid, "30", f_calcHtfBias()[1], lookahead=barmerge.lookahead_off))
+int biasM1  = close > ma2 and ma2 > ma3 ? 1 : (close < ma2 and ma2 < ma3 ? -1 : 0)
+
+bool htfLongOk  = not gateHtf or (biasM15 >= 0 and biasM30 >= 0)
+bool htfShortOk = not gateHtf or (biasM15 <= 0 and biasM30 <= 0)
+
+//==============================================================================
+// LÓGICA DO OPERACIONAL DANILO
+//==============================================================================
+// 1. Alinhamento Completo das 4 Médias
+bool stackBull = ma1 > ma2 and ma2 > ma3 and ma3 > ma4 and close > vwapVal
+bool stackBear = ma1 < ma2 and ma2 < ma3 and ma3 < ma4 and close < vwapVal
+
+// 2. Rastreador de "Início do Alinhamento"
+var int barsInBullAlign = 0
+var int barsInBearAlign = 0
+
+if stackBull
+    barsInBullAlign += 1
+else
+    barsInBullAlign := 0
+
+if stackBear
+    barsInBearAlign += 1
+else
+    barsInBearAlign := 0
+
+bool earlyAlignBull = not useEarlyAlign or (barsInBullAlign > 0 and barsInBullAlign <= maxBarsAlign)
+bool earlyAlignBear = not useEarlyAlign or (barsInBearAlign > 0 and barsInBearAlign <= maxBarsAlign)
+
+// 3. O "Pulo do Gato": Distância Máxima da Média de 200
+float distFrom200   = math.abs(close - ma4)
+bool  tooFarFrom200 = useDist200Filter and (distFrom200 > maxDist200Atr * atrVal)
+
+// 4. Filtro de Mercado Embolado (Chop)
+float fastSpread = math.abs(ma1 - ma3)
+bool isEmbolado  = useChopFilter and (fastSpread < chopSpreadAtr * atrVal)
+
+// 5. Teste / Agressão na faixa da Média 9 e 20
+bool touchedMaBull = low <= ma1 and low >= (ma2 - 2.0 * syminfo.mintick * 10)
+bool touchedMaBear = high >= ma1 and high <= (ma2 + 2.0 * syminfo.mintick * 10)
+
+// 6. Barra de Ignição / Rejeição (Fechamento expressivo)
+bool ignitionBull = close > open and close >= high - (high - low) * 0.35 and close > ma1
+bool ignitionBear = close < open and close <= low + (high - low) * 0.35 and close < ma1
+
+//==============================================================================
+// CONTROLE DE MESA PROPRIETÁRIA
+//==============================================================================
+var int   dayIdentifier = 0
+var int   tradesToday   = 0
+var int   consecLosses  = 0
+var int   lastExitTrade = 0
+var float dayStartEq    = strategy.initial_capital
+var float peakEodEq     = strategy.initial_capital
+
+int curDate = year(time, "America/New_York") * 10000 + month(time, "America/New_York") * 100 + dayofmonth(time, "America/New_York")
+if curDate != dayIdentifier
+    dayIdentifier := curDate
+    tradesToday   := 0
+    consecLosses  := 0
+    dayStartEq    := strategy.equity
+    peakEodEq     := math.max(peakEodEq, strategy.equity)
+
+int closedTrades = strategy.closedtrades
+if closedTrades > lastExitTrade
+    for i = lastExitTrade to closedTrades - 1
+        float pnl = strategy.closedtrades.profit(i)
+        consecLosses := pnl < 0 ? consecLosses + 1 : 0
+    lastExitTrade := closedTrades
+
+float dayPnl      = strategy.equity - dayStartEq
+float propFloor   = peakEodEq - propMaxDD
+float propRoom    = strategy.equity - propFloor
+float lossRemain  = maxLossDay + dayPnl
+
+bool inW1 = useW1 and not na(time(timeframe.period, w1Session, tzSession))
+bool inW2 = useW2 and not na(time(timeframe.period, w2Session, tzSession))
+bool timeAllowed = not useTimeFilter or (inW1 or inW2)
+
+int nyMinNow    = hour(time, "America/New_York") * 100 + minute(time, "America/New_York")
+bool isFlatTime = useFlatNY and (nyMinNow >= flatNYHour and nyMinNow < 1800)
+
+bool riskAllowed = (not useMaxLoss or dayPnl > -maxLossDay) and (not useMaxTrds or tradesToday < maxTrdsDay) and (not useMaxConsec or consecLosses < maxConsec) and (not usePropDD or propRoom > propBuffer)
+
+//==============================================================================
+// GATILHOS FINAIS
+//==============================================================================
+// Este gatilho acompanha o candidato "Rompimento · 20 candles" do relatório:
+// close acima/abaixo do extremo anterior e filtro direcional da média 50.
+float breakoutHigh = ta.highest(high[1], breakoutLength)
+float breakoutLow  = ta.lowest(low[1], breakoutLength)
+bool breakoutBull  = close > breakoutHigh and close > ma3
+bool breakoutBear  = close < breakoutLow and close < ma3
+
+bool useBreakoutTrigger = triggerMode == "Rompimento 20 candles"
+bool pullbackBull = stackBull and earlyAlignBull and touchedMaBull and ignitionBull and not tooFarFrom200 and not isEmbolado and htfLongOk
+bool pullbackBear = stackBear and earlyAlignBear and touchedMaBear and ignitionBear and not tooFarFrom200 and not isEmbolado and htfShortOk
+
+// Horário, limites de risco e zeragem continuam valendo para todos os gatilhos.
+bool setupBull = (useBreakoutTrigger ? breakoutBull : pullbackBull) and timeAllowed and riskAllowed and not isFlatTime
+bool setupBear = (useBreakoutTrigger ? breakoutBear : pullbackBear) and timeAllowed and riskAllowed and not isFlatTime
+
+bool enterLong  = setupBull and barstate.isconfirmed and strategy.opentrades == 0
+bool enterShort = setupBear and barstate.isconfirmed and strategy.opentrades == 0
+
+plotshape(showSignalMarkers and enterLong, title="Entrada de Compra", style=shape.labelup, location=location.belowbar, color=#089981, text="COMPRA", textcolor=color.white, size=size.tiny)
+plotshape(showSignalMarkers and enterShort, title="Entrada de Venda", style=shape.labeldown, location=location.abovebar, color=#f23645, text="VENDA", textcolor=color.white, size=size.tiny)
+if enterLong
+    alert("COMPRA confirmada · " + syminfo.ticker + " · " + triggerMode + " · fechamento " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if enterShort
+    alert("VENDA confirmada · " + syminfo.ticker + " · " + triggerMode + " · fechamento " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+
+// Caixas Visuais
+type TradeBox
+    box   bSL
+    box   bTP
+    line  lEntry
+    float sl
+    float tp
+    bool  isLong
+    bool  done
+
+var tradeBoxes = array.new<TradeBox>()
+
+if (enterLong or enterShort)
+    bool isL = enterLong
+    float entryPx = close
+    
+    // Stop técnico calculado com a barra de entrada e a barra anterior.
+    float rawSL = isL ? (entryPx - math.min(low[0], low[1]) + 2.0) : (math.max(high[0], high[1]) - entryPx + 2.0)
+    float slPts = math.min(maxSLPts, math.max(minSLPts, rawSL))
+    float tpPts = slPts * rrRatio
+    
+    int qty = math.min(maxContracts, math.max(1, int(math.floor(riskUsd / (slPts * ptVal)))))
+    
+    float slPx = isL ? entryPx - slPts : entryPx + slPts
+    float tpPx = isL ? entryPx + tpPts : entryPx - tpPts
+    
+    int slTicks = int(math.ceil(slPts / syminfo.mintick))
+    int tpTicks = int(math.ceil(tpPts / syminfo.mintick))
+    
+    string tradeId = (isL ? "Buy_" : "Sell_") + str.tostring(bar_index)
+    
+    if opMode == "Strategy (Ordens Ativas)"
+        strategy.entry(tradeId, isL ? strategy.long : strategy.short, qty=qty)
+        strategy.exit("Exit_" + tradeId, from_entry=tradeId, loss=slTicks, profit=tpTicks)
+    
+    int x1 = time
+    int x2 = time + 120000
+    
+    string slLabel = "SL: -" + str.tostring(slPts, "#.#") + " pts (-$" + str.tostring(math.round(qty * slPts * ptVal)) + ")"
+    string tpLabel = "TP: +" + str.tostring(tpPts, "#.#") + " pts (+$" + str.tostring(math.round(qty * tpPts * ptVal)) + " | " + str.tostring(rrRatio, "#.#") + "R)"
+    
+    box boxSL = box.new(x1, isL ? entryPx : slPx, x2, isL ? slPx : entryPx, xloc=xloc.bar_time, border_color=na, bgcolor=color.new(#f23645, 75), text=slLabel, text_size=size.tiny, text_color=color.white, text_halign=text.align_left)
+    box boxTP = box.new(x1, isL ? tpPx : entryPx, x2, isL ? entryPx : tpPx, xloc=xloc.bar_time, border_color=na, bgcolor=color.new(#089981, 75), text=tpLabel, text_size=size.tiny, text_color=color.white, text_halign=text.align_left)
+    line lineE = line.new(x1, entryPx, x2, entryPx, xloc=xloc.bar_time, color=color.silver, style=line.style_dashed)
+    
+    tradeBoxes.unshift(TradeBox.new(boxSL, boxTP, lineE, slPx, tpPx, isL, false))
+    tradesToday += 1
+
+if tradeBoxes.size() > 0
+    for i = 0 to tradeBoxes.size() - 1
+        TradeBox tb = tradeBoxes.get(i)
+        if not tb.done
+            int extTime = time + 60000
+            box.set_right(tb.bSL, extTime)
+            box.set_right(tb.bTP, extTime)
+            line.set_x2(tb.lEntry, extTime)
+            
+            bool hitSL = tb.isLong ? low <= tb.sl : high >= tb.sl
+            bool hitTP = tb.isLong ? high >= tb.tp : low <= tb.tp
+            if hitSL or hitTP or isFlatTime
+                tb.done := true
+    
+    while tradeBoxes.size() > 10
+        TradeBox oldB = tradeBoxes.pop()
+        box.delete(oldB.bSL)
+        box.delete(oldB.bTP)
+        line.delete(oldB.lEntry)
+
+if isFlatTime and strategy.opentrades > 0
+    strategy.close_all(comment="FLAT_NY")
+
+//==============================================================================
+// 6. PAINEL DE CONTROLE (HUD COMPLETO COM FEEDBACK DO PULO DO GATO)
+//==============================================================================
+var tSize = hudTxtSize == "Tiny" ? size.tiny : hudTxtSize == "Small" ? size.small : size.normal
+
+string stTxt = triggerMode == "Rompimento 20 candles" ? "AGUARDANDO ROMPIMENTO 20" : "AGUARDANDO PULLBACK"
+color  stBg  = #1e222d
+color  stFg  = color.silver
+
+if strategy.position_size > 0
+    stTxt := "POSIÇÃO COMPRADA"
+    stBg  := #075e4f
+    stFg  := color.white
+else if strategy.position_size < 0
+    stTxt := "POSIÇÃO VENDIDA"
+    stBg  := #7f1d1d
+    stFg  := color.white
+else if enterLong
+    stTxt := "COMPRA CONFIRMADA (M1)"
+    stBg  := #089981
+    stFg  := color.white
+else if enterShort
+    stTxt := "VENDA CONFIRMADA (M1)"
+    stBg  := #f23645
+    stFg  := color.white
+else if not useBreakoutTrigger and tooFarFrom200
+    stTxt := "🟣 LONGE DA 200 (PULO DO GATO)"
+    stBg  := #7c3aed
+    stFg  := color.white
+else if not useBreakoutTrigger and isEmbolado
+    stTxt := "🟠 MÉDIAS EMBOLADAS (CHOP)"
+    stBg  := #d97706
+    stFg  := color.white
+else if not useBreakoutTrigger and not earlyAlignBull and not earlyAlignBear and (stackBull or stackBear)
+    stTxt := "⚪ MOVIMENTO VELHO / TARDIO"
+    stBg  := #475569
+    stFg  := color.silver
+else if not riskAllowed
+    stTxt := "⛔ TRAVA DE CONTA ACIONADA"
+    stBg  := #7f1d1d
+    stFg  := color.white
+else if not timeAllowed or isFlatTime
+    stTxt := "⚪ FORA DAS JANELAS"
+    stBg  := #374151
+    stFg  := color.silver
+
+float winRate = strategy.closedtrades > 0 ? (strategy.wintrades / strategy.closedtrades * 100.0) : 0.0
+float pfRatio = strategy.grossloss > 0 ? (strategy.grossprofit / strategy.grossloss) : na
+
+if barstate.islast
+    string htfStr     = "M1:" + (biasM1 == 1 ? "↑" : biasM1 == -1 ? "↓" : "-") + " | M5:" + (biasM5 == 1 ? "↑" : biasM5 == -1 ? "↓" : "-") + " | M15:" + (biasM15 == 1 ? "↑" : biasM15 == -1 ? "↓" : "-") + " | M30:" + (biasM30 == 1 ? "↑" : biasM30 == -1 ? "↓" : "-")
+    string pnlStr     = (dayPnl >= 0 ? "+$" : "-$") + str.tostring(math.abs(math.round(dayPnl, 2)))
+    string roomStr    = "$" + str.tostring(math.round(propRoom, 0))
+    string winRateStr = str.tostring(winRate, "#.#") + "%"
+    string pfStr      = na(pfRatio) ? "—" : str.tostring(pfRatio, "#.##")
+    string trdStr     = str.tostring(tradesToday) + "/" + str.tostring(maxTrdsDay)
+    string volStr     = str.tostring(atrVal, "#.#") + " pts (" + atrStatus + ")"
+
+    // MODO HORIZONTAL (RODAPÉ)
+    if hudLayout == "Horizontal (Rodapé)"
+        var table hHud = table.new(position.bottom_center, 7, 2, bgcolor=#131722, border_color=#2a2e39, border_width=1, frame_color=#2a2e39, frame_width=1)
+        
+        table.cell(hHud, 0, 0, "STATUS ROBÔ", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 1, 0, stTxt, bgcolor=stBg, text_color=stFg, text_size=tSize)
+        table.cell(hHud, 2, 0, "MATRIZ HTF", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 3, 0, htfStr, bgcolor=#131722, text_color=color.aqua, text_size=tSize)
+        table.cell(hHud, 4, 0, "RELÓGIO HTF", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 5, 0, clockStr, bgcolor=#1e222d, text_color=color.yellow, text_size=tSize)
+        
+        table.cell(hHud, 0, 1, "PNL HOJE", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 1, 1, pnlStr + " (" + trdStr + " trds)", bgcolor=#131722, text_color=dayPnl >= 0 ? color.green : color.red, text_size=tSize)
+        table.cell(hHud, 2, 1, "ASSERTIVIDADE", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 3, 1, "Win: " + winRateStr + " | PF: " + pfStr, bgcolor=#131722, text_color=color.white, text_size=tSize)
+        table.cell(hHud, 4, 1, "PISO TRAILING", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 5, 1, roomStr + " | ATR: " + volStr, bgcolor=#131722, text_color=propRoom > propBuffer ? color.green : color.red, text_size=tSize)
+        table.cell(hHud, 6, 0, "GATILHO", bgcolor=#1e222d, text_color=color.silver, text_size=tSize)
+        table.cell(hHud, 6, 1, triggerMode, bgcolor=#131722, text_color=color.aqua, text_size=tSize)
+
+    // MODO VERTICAL (LATERAL)
+    else
+        var table vHud = table.new(position.top_right, 2, 13, bgcolor=#131722, border_color=#2a2e39, border_width=1, frame_color=#2a2e39, frame_width=1)
+        
+        table.cell(vHud, 0, 0, "WORKSTATION M1", bgcolor=#1e222d, text_color=color.white, text_size=tSize)
+        table.cell(vHud, 1, 0, opMode == "Strategy (Ordens Ativas)" ? "STRATEGY" : "VISUAL", bgcolor=#1e222d, text_color=color.aqua, text_size=tSize)
+        
+        table.cell(vHud, 0, 1, "Status Principal", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 1, stTxt, bgcolor=stBg, text_color=stFg, text_size=tSize)
+        
+        table.cell(vHud, 0, 2, "Relógio de Velas", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 2, clockStr, bgcolor=#1e222d, text_color=color.yellow, text_size=tSize)
+
+        table.cell(vHud, 0, 3, "Matriz Macro HTF", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 3, htfStr, text_color=color.aqua, text_size=tSize)
+        
+        table.cell(vHud, 0, 4, "Taxa de Acerto (Win%)", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 4, winRateStr, text_color=color.white, text_size=tSize)
+
+        table.cell(vHud, 0, 5, "Fator de Lucro (PF)", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 5, pfStr, text_color=color.white, text_size=tSize)
+
+        table.cell(vHud, 0, 6, "PnL da Sessão", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 6, pnlStr, text_color=dayPnl >= 0 ? color.green : color.red, text_size=tSize)
+        
+        table.cell(vHud, 0, 7, "Margem Trailing", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 7, roomStr, text_color=propRoom > propBuffer ? color.green : color.red, text_size=tSize)
+        
+        table.cell(vHud, 0, 8, "Trades Hoje", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 8, trdStr, text_color=color.white, text_size=tSize)
+        
+        table.cell(vHud, 0, 9, "Volatilidade (ATR)", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 9, volStr, text_color=atrCol, text_size=tSize)
+        
+        table.cell(vHud, 0, 10, "Janela (" + tzSession + ")", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 10, inW1 ? "J1 ABERTA" : inW2 ? "J2 ABERTA" : "FECHADA", text_color=(inW1 or inW2) ? color.green : color.gray, text_size=tSize)
+        table.cell(vHud, 0, 11, "Gatilho", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 11, triggerMode, text_color=color.aqua, text_size=tSize)
+        table.cell(vHud, 0, 12, "Janela ativa", text_color=color.silver, text_size=tSize)
+        table.cell(vHud, 1, 12, inW1 ? "J1" : inW2 ? "J2" : "FORA", text_color=(inW1 or inW2) ? color.green : color.gray, text_size=tSize)

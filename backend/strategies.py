@@ -136,3 +136,47 @@ def evaluate_oos(frame: pd.DataFrame, signals: pd.Series, cost_points: float = 1
     net = float(test_pnl.sum())
     score = (net / max(drawdown, 1.0)) * np.log1p(trade_count) if trade_count else -1e9
     return {"trades": trade_count, "win_rate": float(np.mean(trade_returns > 0) * 100) if trade_count else 0.0, "net_points": round(net, 2), "profit_factor": round(profit_factor, 3), "max_drawdown_points": round(drawdown, 2), "score": round(float(score), 4), "oos_bars": len(test_pnl)}
+
+
+def oos_trade_ledger(frame: pd.DataFrame, signals: pd.Series, cost_points: float = 1.0) -> pd.DataFrame:
+    """Build the simplified next-open/opposite-signal OOS trades for time-of-day analysis."""
+    clean = frame.reset_index(drop=True)
+    raw = signals.reset_index(drop=True).fillna(0).astype(int).to_numpy()
+    split = max(1, int(len(clean) * 0.7))
+    positions = np.zeros(len(clean), dtype=np.int8)
+    state = 0
+    for i in range(max(0, split - 1), len(clean)):
+        if raw[i]:
+            state = int(raw[i])
+        positions[i] = state
+    held = np.r_[0, positions[:-1]]
+    held[split] = 0
+
+    rows: list[dict] = []
+    trade_side = 0
+    trade_pnl = 0.0
+    entry_time: int | None = None
+    entry_bar = 0
+    opens, closes = clean.open.to_numpy(), clean.close.to_numpy()
+    prev_close = clean.close.shift(1).to_numpy()
+    times = clean.time.to_numpy(dtype="int64")
+    for i in range(split, len(clean)):
+        prior, current = int(held[i]), int(positions[i])
+        gap = float(opens[i] - prev_close[i]) if np.isfinite(prev_close[i]) else 0.0
+        body = float(closes[i] - opens[i])
+        if current != prior:
+            if prior:
+                trade_pnl += prior * gap - cost_points
+                rows.append({"side": trade_side, "entry_time": entry_time, "exit_time": int(times[i]), "bars_held": i - entry_bar, "net_points": trade_pnl})
+                trade_pnl = 0.0
+                entry_time = None
+            if current:
+                trade_side = current
+                entry_time = int(times[i])
+                entry_bar = i
+                trade_pnl = current * body - cost_points
+        elif current:
+            trade_pnl += current * (gap + body)
+    if trade_side and entry_time is not None:
+        rows.append({"side": trade_side, "entry_time": entry_time, "exit_time": int(times[-1]), "bars_held": len(clean) - entry_bar, "net_points": trade_pnl})
+    return pd.DataFrame(rows, columns=["side", "entry_time", "exit_time", "bars_held", "net_points"])

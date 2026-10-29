@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from strategies import evaluate_oos, strategy_signals
+from strategies import evaluate_oos, oos_trade_ledger, strategy_signals
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -75,6 +75,8 @@ def history_months_frame(symbol: str, months: int) -> pd.DataFrame:
     frame.rename(columns={"tick_volume": "volume"}, inplace=True)
     frame.sort_values("time", inplace=True)
     frame.drop_duplicates("time", keep="last", inplace=True)
+    current_m1_start = int(end.timestamp()) // 60 * 60
+    frame = frame.loc[frame.time < current_m1_start]
     return frame[["time", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
 
 
@@ -179,6 +181,36 @@ def apply_history_window(frame: pd.DataFrame, months: int) -> tuple[pd.DataFrame
     return window, {"start": first_time.isoformat(), "end": last_time.isoformat(), "actual_months": round(actual_months, 2), "coverage_ok": actual_months >= months * 0.9}
 
 
+def _trade_metrics(group: pd.DataFrame) -> dict[str, Any]:
+    pnl = group.net_points.astype(float)
+    wins, losses = pnl[pnl > 0], pnl[pnl < 0]
+    equity = pnl.cumsum().to_numpy()
+    peak = np.maximum.accumulate(np.r_[0.0, equity])[1:]
+    return {
+        "trades": int(len(group)),
+        "win_rate": round(float((pnl > 0).mean() * 100), 1) if len(group) else 0.0,
+        "net_points": round(float(pnl.sum()), 2),
+        "expectancy_points": round(float(pnl.mean()), 2) if len(group) else 0.0,
+        "profit_factor": round(float(wins.sum() / abs(losses.sum())), 2) if len(losses) and losses.sum() else (99.0 if len(wins) else 0.0),
+        "max_drawdown_points": round(float(np.max(peak - equity)), 2) if len(equity) else 0.0,
+        "avg_hold_bars": round(float(group.bars_held.mean()), 1) if len(group) else 0.0,
+    }
+
+
+def _time_profiles(ledger: pd.DataFrame, strategy_name: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    entries = ledger.copy()
+    if not entries.empty:
+        local = pd.to_datetime(entries.entry_time, unit="s", utc=True).dt.tz_convert("Europe/Dublin")
+        entries["hour"] = local.dt.hour
+        entries["weekday"] = local.dt.dayofweek
+    weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+    by_hour = {int(key): group for key, group in entries.groupby("hour", sort=True)} if not entries.empty else {}
+    by_day = {int(key): group for key, group in entries.groupby("weekday", sort=True)} if not entries.empty else {}
+    hourly = [{"strategy": strategy_name, "hour": hour, "window": f"{hour:02d}:00–{hour:02d}:59", **_trade_metrics(by_hour.get(hour, entries.iloc[0:0]))} for hour in range(24)]
+    daily = [{"strategy": strategy_name, "weekday": weekdays[day], "weekday_index": day, **_trade_metrics(by_day.get(day, entries.iloc[0:0]))} for day in range(7)]
+    return hourly, daily
+
+
 @app.post("/research/strategies")
 def research_strategies(req: StrategyReportRequest) -> dict[str, Any]:
     frame = history_months_frame(req.symbol, req.period_months)
@@ -193,10 +225,14 @@ def research_strategies(req: StrategyReportRequest) -> dict[str, Any]:
     current_trend, current_vol = int(trend_state.iloc[-1]), bool(high_vol.iloc[-1])
     same_regime = (trend_state == current_trend) & (high_vol == current_vol)
     results = []
+    hourly_windows, weekday_windows = [], []
     for name, signal in candidates.items():
         overall = evaluate_oos(analyzed, signal, req.cost_points_per_fill)
         similar = evaluate_oos(analyzed, signal, req.cost_points_per_fill, same_regime)
         results.append({"name": name, **overall, "regime_trades": similar["trades"], "regime_win_rate": similar["win_rate"], "regime_net_points": similar["net_points"], "regime_profit_factor": similar["profit_factor"], "regime_max_drawdown_points": similar["max_drawdown_points"], "regime_score": similar["score"]})
+        hourly, daily = _time_profiles(oos_trade_ledger(analyzed, signal, req.cost_points_per_fill), name)
+        hourly_windows.extend(hourly)
+        weekday_windows.extend(daily)
     results.sort(key=lambda item: item["regime_score"], reverse=True)
     eligible = [item for item in results if coverage["coverage_ok"] and item["regime_trades"] >= 15 and item["regime_profit_factor"] >= 1.05 and item["regime_net_points"] > 0]
     best = eligible[0] if eligible else None
@@ -204,7 +240,8 @@ def research_strategies(req: StrategyReportRequest) -> dict[str, Any]:
     recommendation = (f"No holdout e em barras com regime semelhante ao atual, o candidato que passou os filtros foi {best['name']}. Classificação estatística; não é garantia nem sinal de entrada." if best else "Nenhum candidato passou os critérios mínimos no regime atual. Sem recomendação para operar.")
     if not coverage["coverage_ok"]:
         recommendation = f"O MT5 forneceu apenas {coverage['actual_months']} meses de candles para uma janela solicitada de {req.period_months}. A amostra está incompleta; não há recomendação confiável até aumentar o limite de barras do terminal e recarregar o histórico."
-    return {"symbol": req.symbol, "timeframe": "M1", "generated_at": int(datetime.now(timezone.utc).timestamp()), "sample_bars": len(analyzed), "requested_months": req.period_months, "coverage": coverage, "validation": "Holdout cronológico: primeiro 70% para warmup; últimos 30% avaliados. Ranking filtrado por regime comparável ao atual.", "regime": {"trend": "alta" if current_trend > 0 else "baixa" if current_trend < 0 else "lateral", "volatility": "alta" if current_vol else "normal", "atr14": round(float(last.atr14), 4) if pd.notna(last.atr14) else None}, "best_candidate": best["name"] if best and coverage["coverage_ok"] else None, "recommendation": recommendation, "criteria": "Mínimo de 15 entradas OOS em períodos historicamente semelhantes, PF >= 1,05 e resultado líquido positivo; ranking por retorno ajustado ao drawdown e número de trades.", "strategies": results}
+    top_windows = sorted((w for w in hourly_windows if w["trades"] >= 15 and w["profit_factor"] >= 1.05 and w["net_points"] > 0), key=lambda w: (w["net_points"] / max(w["max_drawdown_points"], 1), w["trades"]), reverse=True)[:10]
+    return {"symbol": req.symbol, "timeframe": "M1", "generated_at": int(datetime.now(timezone.utc).timestamp()), "sample_bars": len(analyzed), "requested_months": req.period_months, "coverage": coverage, "validation": "Holdout cronológico: primeiro 70% para warmup; últimos 30% avaliados. Ranking filtrado por regime comparável ao atual.", "time_analysis": "Janelas horárias agregam o holdout OOS completo e não estão condicionadas ao regime atual. Horários Europe/Dublin têm ajuste de horário de verão; cada trade é classificado pela hora local de entrada. Segmentação exploratória, sujeita a viés de seleção.", "regime": {"trend": "alta" if current_trend > 0 else "baixa" if current_trend < 0 else "lateral", "volatility": "alta" if current_vol else "normal", "atr14": round(float(last.atr14), 4) if pd.notna(last.atr14) else None}, "best_candidate": best["name"] if best and coverage["coverage_ok"] else None, "recommendation": recommendation, "criteria": "Mínimo de 15 entradas OOS em períodos historicamente semelhantes, PF >= 1,05 e resultado líquido positivo; ranking por retorno ajustado ao drawdown e número de trades.", "strategies": results, "hourly_windows": hourly_windows, "weekday_windows": weekday_windows, "top_windows": top_windows}
 
 
 class SingleStrategyRequest(StrategyReportRequest):
