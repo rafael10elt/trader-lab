@@ -1,0 +1,4053 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+netlify/
+  functions/
+    .gitkeep
+pine/
+  README.md
+sentinel/
+  dashboard/
+    index.html
+  bootstrap.py
+  calibrador.py
+  captura.py
+  config.json
+  CRIAR_ATALHO_DESKTOP.bat
+  estado.py
+  indicadores.py
+  INICIAR_SENTINELA.bat
+  juiz.py
+  ml.py
+  README.md
+  requirements.txt
+  sentinel.py
+  servidor.py
+  setup_checker.py
+  velas.py
+site/
+  index.html
+.gitignore
+netlify.toml
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="netlify/functions/.gitkeep">
+# Diretório de Netlify Functions (mantido vazio de propósito).
+# A função antiga do assistente Groq fazia parte do sistema React removido.
+# .gitkeep existe só para o git versionar a pasta — não é uma função.
+</file>
+
+<file path="pine/README.md">
+# 📈 Código Pine do setup (TradingView)
+
+Cole aqui o seu script do Strategy — **`setup_estrategia.pine`**.
+
+```text
+trader-lab/
+└── pine/
+    └── setup_estrategia.pine   ← cole o seu código aqui
+```
+
+Basta criar o arquivo e colar o código inteiro. Depois é só commitar:
+
+```powershell
+git add pine/setup_estrategia.pine
+git commit -m "Setup Pine: EMAs 9/20/200 + VWAP + FVG M5 + OB"
+```
+
+---
+
+## Por que o Sentinel precisa dele
+
+O Sentinel **não** lê o seu script — ele lê a *imagem* do gráfico. Mas o
+código Pine é a fonte da verdade das **cores** que a visão computacional
+procura (`sentinel/config.json` → `indicadores.cores`):
+
+| Linha no gráfico | Cor esperada pelo Sentinel | Hue (Pillow 0–255) |
+|---|---|---|
+| EMA 9   | verde  | 50–121 |
+| EMA 20  | amarelo| 30–56  |
+| EMA 200 | branca | S ≤ 70 e V ≥ 200 |
+| VWAP    | laranja| 18–34  |
+
+Se no seu Pine as cores forem outras, ajuste em `sentinel/config.json`:
+
+```json
+"indicadores": {
+  "ativar": true,
+  "exigir": ["ema9", "ema20"],
+  "exigir_vwap": true,
+  "bloquear_mista": true,
+  "cores": {
+    "ema9":   { "faixa": [50, 121], "min_s": 110, "min_v": 70 },
+    "vwap":   { "faixa": [18, 34],  "min_s": 120, "min_v": 110 }
+  }
+}
+```
+
+> `faixa` é o **hue** na escala do Pillow (0–255, não graus).
+> Converta: `hue_pillow = hue_graus × 255 / 360`.
+
+---
+
+## O que o Sentinel já usa do setup
+
+No fechamento de cada vela o pipeline lê EMAs e VWAP **na imagem** e aplica:
+
+1. **EMA9 e EMA20 visíveis** na área do gráfico (`exigir`);
+2. **Stack alinhado** — 9 > 20 > 200 para BUY, 9 < 20 < 200 para SELL
+   (`bloquear_mista`);
+3. **Preço do lado certo do VWAP** — acima para BUY, abaixo para SELL
+   (`exigir_vwap`);
+4. As 4 features resultantes entram no modelo de ML junto com as 10 da vela.
+
+FVGs do M5 e Order Blocks com % de confiança **ainda não** entram na decisão —
+quando você colar o Pine aqui, dá para mapear o desenho deles (retângulos)
+por cor na ROI e transformá-los em mais features/portões.
+</file>
+
+<file path="sentinel/bootstrap.py">
+"""Auto-bootstrap do ambiente do Sentinel.
+
+Resolve o erro clássico ao rodar `python sentinel/sentinel.py` com o Python
+do sistema (ModuleNotFoundError: No module named 'mss'):
+
+  1. dependências OK -> segue direto;
+  2. fora do venv -> cria `sentinel/venv` se não existir e **relança** o
+     script com o interpretador do venv;
+  3. dentro do venv mas faltando pacotes -> instala do requirements e segue.
+
+Sem loop: o relanço cai sempre no passo 3 (ou falha com mensagem clara).
+"""
+import importlib
+import os
+import subprocess
+import sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VENV_DIR = os.path.join(BASE_DIR, "venv")
+VENV_PYTHON = os.path.join(VENV_DIR, "Scripts", "python.exe")
+REQUIREMENTS = os.path.join(BASE_DIR, "requirements.txt")
+
+
+def _log(fase, **extra):
+    """Rastro do bootstrap; ative com SENTINEL_BOOT_LOG=1 (útil p/ debug)."""
+    if os.environ.get("SENTINEL_BOOT_LOG") != "1":
+        return
+    dados = " ".join(f"{k}={v}" for k, v in extra.items())
+    linha = (f"[pid={os.getpid()} ppid={os.getppid()} {fase}] {dados}\n")
+    try:
+        with open(os.path.join(BASE_DIR, "bootstrap.log"), "a",
+                  encoding="utf-8") as f:
+            f.write(linha)
+    except Exception:
+        pass
+
+
+def _tem_dependencias():
+    try:
+        import mss  # noqa: F401
+        import PIL  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _dentro_do_venv():
+    return os.path.abspath(sys.prefix) == os.path.abspath(VENV_DIR)
+
+
+def _msg_ajuda(erro):
+    return (
+        "[SENTINEL] Nao consegui preparar o ambiente automaticamente.\n"
+        f"  motivo: {erro}\n\n"
+        "  Correcao manual (uma vez so):\n"
+        f"    cd {BASE_DIR}\n"
+        "    py -3 -m venv venv\n"
+        "    venv\\Scripts\\python.exe -m pip install -r requirements.txt\n\n"
+        "  Ou simplesmente rode: sentinel\\INICIAR_SENTINELA.bat\n"
+    )
+
+
+def _pip_install():
+    subprocess.check_call(
+        [VENV_PYTHON, "-m", "pip", "install", "--disable-pip-version-check",
+         "-q", "-r", REQUIREMENTS],
+        cwd=BASE_DIR)
+    importlib.invalidate_caches()  # pacotes novos passam a ser enxergados
+
+
+def _quote(arg):
+    # os.execv no Windows monta a linha de comando juntando os argumentos;
+    # caminhos com espaços (ex.: C:\Meu Projetos\...) quebrariam sem aspas.
+    if arg and " " in arg and not (arg.startswith('"') and arg.endswith('"')):
+        return f'"{arg}"'
+    return arg
+
+
+def _relancar(script, argv):
+    print(f"[SENTINEL] Reabrindo com o ambiente do venv: {VENV_PYTHON}")
+    os.execv(VENV_PYTHON,
+             [VENV_PYTHON] + [_quote(a) for a in [script] + list(argv)])
+
+
+def garantir_ambiente(script, argv=None):
+    """Garante dependências antes dos imports pesados. Não retorna em erro."""
+    argv = sys.argv[1:] if argv is None else argv
+    _log("avalia", deps=_tem_dependencias(), no_venv=_dentro_do_venv(),
+         exe=sys.executable, argv=" ".join(argv))
+
+    if _tem_dependencias():
+        return
+
+    if not _dentro_do_venv():
+        # passo 2: interp. global sem as libs -> usa/cria o venv e relança
+        try:
+            if not os.path.exists(VENV_PYTHON):
+                _log("cria-venv", alvo=VENV_PYTHON)
+                print("[SENTINEL] Criando ambiente Python (1a execucao)...")
+                subprocess.check_call([sys.executable, "-m", "venv", VENV_DIR],
+                                      cwd=BASE_DIR)
+                _pip_install()
+                print("[SENTINEL] Ambiente pronto.")
+            _log("relanca", alvo=VENV_PYTHON)
+            _relancar(script, argv)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            sys.stderr.write(_msg_ajuda(exc))
+            sys.exit(1)
+
+    # passo 3: dentro do venv, faltando pacotes
+    try:
+        _log("pip-install", dentro_venv=True)
+        _pip_install()
+        if not _tem_dependencias():
+            raise RuntimeError("pacotes instalados mas seguem indisponíveis")
+    except Exception as exc:
+        sys.stderr.write(_msg_ajuda(exc))
+        sys.exit(1)
+
+
+def relatorio():
+    """Diagnóstico do ambiente (`python sentinel.py --check`)."""
+    from importlib import metadata
+
+    def ver(pkg):
+        try:
+            return metadata.version(pkg)
+        except Exception:
+            return "AUSENTE"
+
+    print("=== LUMI SENTINEL VISION — checagem de ambiente ===")
+    print(f"  interpretador : {sys.executable}")
+    print(f"  python        : {sys.version.split()[0]}")
+    print(f"  venv esperado : {VENV_PYTHON} "
+          f"({'existe' if os.path.exists(VENV_PYTHON) else 'NÃO existe'})")
+    print(f"  dentro do venv: {_dentro_do_venv()}")
+    print(f"  mss           : {ver('mss')}")
+    print(f"  pillow        : {ver('pillow')}")
+    print(f"  deps OK       : {_tem_dependencias()}")
+    print(f"  dashboard     : sobe em http://127.0.0.1:8777/ ao iniciar a GUI")
+</file>
+
+<file path="sentinel/CRIAR_ATALHO_DESKTOP.bat">
+@echo off
+set SCRIPT="%TEMP%\%RANDOM%-%RANDOM%.vbs"
+echo Set oWS = WScript.CreateObject("WScript.Shell") >> %SCRIPT%
+echo sLinkFile = oWS.SpecialFolders("Desktop") ^& "\Lumi Sentinel Vision.lnk" >> %SCRIPT%
+echo Set oLink = oWS.CreateShortcut(sLinkFile) >> %SCRIPT%
+echo oLink.TargetPath = "%~dp0venv\Scripts\pythonw.exe" >> %SCRIPT%
+echo oLink.Arguments = """%~dp0sentinel.py""" >> %SCRIPT%
+echo oLink.WorkingDirectory = "%~dp0" >> %SCRIPT%
+echo oLink.Description = "Lumi Sentinel Vision - vigilancia por visao computacional" >> %SCRIPT%
+echo oLink.Save >> %SCRIPT%
+cscript /nologo %SCRIPT%
+del %SCRIPT%
+echo.
+echo ========================================================
+echo [OK] Atalho 'Lumi Sentinel Vision' criado na Area de Trabalho!
+echo (se o venv ainda nao existe, rode INICIAR_SENTINELA.bat antes)
+echo ========================================================
+pause
+</file>
+
+<file path="sentinel/indicadores.py">
+"""Detecção dos indicadores do gráfico por visão computacional (Pillow puro).
+
+Le, na ROI calibrada, as linhas do setup do operador:
+  EMA9 (verde), EMA20 (amarelo), EMA200 (branca), VWAP (laranja).
+
+Método:
+  1. máscaras HSV de cada cor (cores configuráveis em config.json ->
+     indicadores.cores; os padrões vêm do layout informado pelo operador);
+  2. recorta a "faixa de preço" (a mesma que define as velas) e procura as
+     colunas "de intervalo" (sem corpo de vela) — ali só passam as linhas;
+  3. nas últimas N colunas de intervalo (perto do preço atual), extrai o y
+     mediano de cada cor -> posição atual da linha;
+  4. devolve tendência (alinhamento das EMAs), posição do preço vs. VWAP e
+     4 features orientadas à direção candidata (entram no ML).
+
+Se uma linha não for encontrada, ela entra em `ausentes` — o setup_checker
+decide se bloqueia (padrão) ou segue sem ela.
+"""
+from statistics import median
+
+from PIL import Image, ImageChops
+
+import velas as velas_mod
+
+# ------------------------------------------------------------- padrões
+# H em 0..255 (escala do Pillow). Os padrões foram definidos a partir do
+# layout do operador: EMA9 verde, EMA20 amarelo, EMA200 branca, VWAP laranja.
+# As faixas precisam ficar DISJUNTAS entre si — senão o amarelo da EMA20
+# (H≈34) caía dentro do laranja do VWAP e o y mediano saía torto.
+CORES_PADRAO = {
+    "ema9":   {"faixa": [50, 121], "min_s": 110, "min_v": 70},   # verde
+    "ema20":  {"faixa": [32, 46],  "min_s": 140, "min_v": 150},  # amarelo
+    "ema200": {"branca": True, "max_s": 70, "min_v": 200},       # branca
+    "vwap":   {"faixa": [12, 29],  "min_s": 120, "min_v": 110},  # laranja
+}
+LINHAS = ["ema9", "ema20", "ema200", "vwap"]
+
+NOMES_FEATURES = ["tendencia_stack", "preco_vwap", "dist_ema9", "dist_ema200"]
+
+# quantas colunas de intervalo olhar (as mais recentes = perto do preço atual)
+AMOSTRAS_LATERAIS = 12
+FRACAO_MIN_PRESENCA = 0.55   # linha precisa aparecer em >=55% das colunas
+
+
+def _cores_efetivas(cfg_usuario=None):
+    cores = {k: dict(v) for k, v in CORES_PADRAO.items()}
+    if cfg_usuario:
+        for nome, cfg in cfg_usuario.items():
+            if isinstance(cfg, dict):
+                base = cores.get(nome, {})
+                base.update(cfg)
+                cores[nome] = base
+    return cores
+
+
+def _mascara_linha(cfg, h_ch, s_ch, v_ch):
+    """Máscara L (0/255) da cor de uma linha do setup."""
+    if cfg.get("branca"):
+        return ImageChops.multiply(
+            s_ch.point(lambda p: 255 if p <= cfg.get("max_s", 70) else 0),
+            v_ch.point(lambda p: 255 if p >= cfg.get("min_v", 200) else 0))
+    lo, hi = cfg.get("faixa", [0, 255])
+    h_m = h_ch.point(lambda p: 255 if lo <= p <= hi else 0)
+    s_m = s_ch.point(lambda p: 255 if p >= cfg.get("min_s", 110) else 0)
+    v_m = v_ch.point(lambda p: 255 if p >= cfg.get("min_v", 70) else 0)
+    return ImageChops.multiply(ImageChops.multiply(h_m, s_m), v_m)
+
+
+def _ys_na_coluna(mask, x, h):
+    faixa = mask.crop((x, 0, x + 1, h))
+    return [i for i, p in enumerate(faixa.getdata()) if p]
+
+
+def _faixa_busca(img, combined):
+    """(y0, y1) da faixa de preço expandida — pega EMAs longe do preço."""
+    w, h = img.size
+    faixa = velas_mod._faixa_preco(combined, w, h)
+    if faixa is None:
+        return None
+    y0, y1 = faixa
+    exp = int((y1 - y0) * 0.35) + 8
+    return max(0, y0 - exp), min(h - 1, y1 + exp)
+
+
+def detectar(img, cfg_cores=None):
+    """Detecta as linhas do setup na imagem do gráfico.
+
+    Retorna:
+      {"ema9_y": int|None, "ema20_y": ..., "ema200_y": ..., "vwap_y": ...,
+       "encontrados": [...], "ausentes": [...], "confianca": 0..1}
+    y cresce para baixo (menor y = preço mais alto).
+    """
+    resultado = {**{f"{n}_y": None for n in LINHAS},
+                 "encontrados": [], "ausentes": list(LINHAS), "confianca": 0.0}
+    if img is None:
+        return resultado
+    w, h = img.size
+    if w < 24 or h < 24:
+        return resultado
+
+    # faixa de preço (mesma do extrator de velas) define onde há corpos
+    m_baixa, m_alta = velas_mod._mascaras_cor(img)
+    combined = ImageChops.lighter(m_baixa, m_alta)
+    busca = _faixa_busca(img, combined)
+    if busca is None:
+        return resultado
+    y0, y1 = busca
+
+    margem_dir = max(4, int(w * 0.04))        # ignora eixo de preços
+    x_ini = max(3, int(w * 0.03))             # ignora borda esquerda
+    larg = max(8, w - margem_dir)
+    alt = y1 + 1 - y0
+
+    contagens = velas_mod._contagens_coluna(
+        combined.crop((0, y0, larg, y1 + 1)), larg, alt)
+
+    banda = img.crop((0, y0, larg, y1 + 1))
+    hsv = banda.convert("HSV")
+    h_ch, s_ch, v_ch = hsv.split()
+
+    # colunas "de intervalo": quase sem corpo de vela (um traço de média tem
+    # 1-4 px, um corpo tem dezenas) — ali só passam as linhas do setup
+    min_col = max(3, int(alt * 0.05))
+    intervalos = [x for x in range(x_ini, len(contagens))
+                  if contagens[x] < min_col]
+    if len(intervalos) < 4:
+        return resultado
+    amostras = intervalos[-AMOSTRAS_LATERAIS:]
+
+    # linhas lidas na altura toda da faixa expandida: uma EMA200 longe do
+    # preço continua sendo encontrada; o texto/legenda fica fora porque só
+    # olhamos as últimas colunas (lado direito, junto ao preço atual)
+    cores = _cores_efetivas(cfg_cores)
+    encontrados, fracoes = [], []
+    for nome in LINHAS:
+        cfg = cores.get(nome) or CORES_PADRAO[nome]
+        mask = _mascara_linha(cfg, h_ch, s_ch, v_ch)
+        meds = []
+        for x in amostras:
+            ys = _ys_na_coluna(mask, x, alt)
+            if ys:
+                meds.append(median(ys) + y0)
+        if not meds:
+            continue
+        fracao = len(meds) / len(amostras)
+        if fracao >= FRACAO_MIN_PRESENCA:
+            resultado[f"{nome}_y"] = int(median(meds))
+            encontrados.append(nome)
+            fracoes.append(fracao)
+
+    resultado["encontrados"] = encontrados
+    resultado["ausentes"] = [n for n in LINHAS if n not in encontrados]
+    resultado["confianca"] = round(sum(fracoes) / len(fracoes), 2) if fracoes else 0.0
+    return resultado
+
+
+def tendencia(indic):
+    """Alinhamento das EMAs: "ALTA" (9>20>200 em preço) | "BAIXA" | "MISTA".
+
+    Se a EMA200 não está em quadro (fora da área calibrada), usa o par
+    9/20 — quem quiser a EMA200 obrigatória basta pôr "ema200" em
+    `indicadores.exigir`.
+    """
+    y9 = indic.get("ema9_y")
+    y20 = indic.get("ema20_y")
+    y200 = indic.get("ema200_y")
+    if y9 is None or y20 is None:
+        return "MISTA"
+    if y200 is None:
+        if y9 < y20:
+            return "ALTA"
+        if y9 > y20:
+            return "BAIXA"
+        return "MISTA"
+    if y9 < y20 < y200:
+        return "ALTA"
+    if y9 > y20 > y200:
+        return "BAIXA"
+    return "MISTA"
+
+
+def preco_acima_vwap(indic, close_y):
+    """True se o preço está ACIMA do VWAP (y menor = preço mais alto)."""
+    vw = indic.get("vwap_y")
+    if vw is None or close_y is None:
+        return None
+    return close_y < vw
+
+
+def _clip(x, lo, hi):
+    return max(lo, min(hi, x))
+
+
+def gerar_features(indic, close_y, direcao, amp):
+    """4 features orientadas à direção candidata (entram no ML)."""
+    if amp is None or amp <= 0:
+        amp = 1.0
+    s = 1 if direcao == "BUY" else -1
+
+    stack = tendencia(indic)
+    f_stack = s * (1 if stack == "ALTA" else -1 if stack == "BAIXA" else 0)
+
+    y9 = indic.get("ema9_y")
+    y200 = indic.get("ema200_y")
+    vw = indic.get("vwap_y")
+
+    # distância preço<->linha em unidades de amplitude, com sinal da direção
+    f_vwap = _clip(s * ((vw - close_y) / amp), -2, 2) if vw is not None else 0.0
+    f_ema9 = _clip(s * ((y9 - close_y) / amp), -2, 2) if y9 is not None else 0.0
+    f_ema200 = _clip(s * ((y200 - close_y) / amp), -3, 3) if y200 is not None else 0.0
+
+    return [float(f_stack), float(f_vwap), float(f_ema9), float(f_ema200)]
+</file>
+
+<file path="sentinel/INICIAR_SENTINELA.bat">
+@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+
+echo ========================================================
+echo  LUMI SENTINEL VISION - inicializacao
+echo ========================================================
+
+if not exist "venv\Scripts\python.exe" (
+    echo [1/3] Criando ambiente Python...
+    py -3 -m venv venv
+    if errorlevel 1 (
+        echo [ERRO] Nao consegui criar o venv. Instale Python 3.11+ de 64 bits.
+        pause
+        exit /b 1
+    )
+) else (
+    echo [1/3] Ambiente Python ja existe.
+)
+
+echo [2/3] Verificando dependencias...
+venv\Scripts\python.exe -m pip install --disable-pip-version-check -q -r requirements.txt
+if errorlevel 1 (
+    echo [ERRO] Falha ao instalar dependencias (verifique a internet).
+    pause
+    exit /b 1
+)
+
+echo [3/3] Iniciando Sentinel...
+echo.
+venv\Scripts\pythonw.exe sentinel.py
+if errorlevel 1 (
+    rem se pythonw nao logar erro, mostra a saida para diagnosticar
+    venv\Scripts\python.exe sentinel.py
+)
+</file>
+
+<file path="sentinel/requirements.txt">
+mss>=9.0.1
+pillow>=10.2.0
+</file>
+
+<file path="sentinel/captura.py">
+"""Captura de tela e hash do gráfico (visão computacional, sem OpenCV).
+
+Tudo com Pillow + mss, para instalar leve e rodar no Python 3.14.
+A leitura das velas (cores/cores do gráfico) vive em velas.py; aqui ficam
+só captura, hash de vitalidade e preview.
+"""
+import ctypes
+import hashlib
+import re
+import threading
+
+from PIL import Image
+
+# Suporte a DPI do Windows (precisão pixel a pixel)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+try:
+    import win32gui
+    HAS_WIN32 = True
+except ImportError:
+    HAS_WIN32 = False
+
+_thread_local = threading.local()
+
+
+def _sct():
+    """Instância mss por thread (mss não é seguro entre threads)."""
+    sct = getattr(_thread_local, "sct", None)
+    if sct is None:
+        import mss
+        # MSS é a API atual; mss.mss() é o alias legado (deprecated)
+        fabrica = getattr(mss, "MSS", None) or mss.mss
+        sct = fabrica()
+        _thread_local.sct = sct
+    return sct
+
+
+def listar_monitores():
+    """Monitores com coordenadas GLOBAIS do desktop virtual (podem ser negativas)."""
+    try:
+        # ATENÇÃO: não usar `with _sct()` — o __exit__ fecha a instância
+        # cacheada da thread e todo grab seguinte falha com "access denied".
+        monitores = [
+            {"index": i, "left": int(m["left"]), "top": int(m["top"]),
+             "width": int(m["width"]), "height": int(m["height"])}
+            for i, m in enumerate(_sct().monitors[1:], start=1)
+        ]
+        return monitores or _monitores_fallback()
+    except Exception:
+        return _monitores_fallback()
+
+
+def _monitores_fallback():
+    user32 = ctypes.windll.user32
+    return [{"index": 1, "left": 0, "top": 0,
+             "width": user32.GetSystemMetrics(0),
+             "height": user32.GetSystemMetrics(1)}]
+
+
+def capturar(roi):
+    """Captura a ROI e devolve uma imagem Pillow RGB."""
+    shot = _sct().grab(roi)
+    return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+
+
+def hash_faixa_direita(img, proporcao=0.10):
+    """Hash da faixa mais à direita do gráfico.
+
+    Comparado de uma vela para a outra: se NÃO mudou, o gráfico está parado
+    (aba congelada/oculta) e o sinal do relógio de vela não é confiável.
+    """
+    w, h = img.size
+    largura = max(int(w * proporcao), 8)
+    faixa = img.crop((w - largura, 0, w, h))
+    return hashlib.md5(faixa.tobytes()).hexdigest()
+
+
+def detectar_ativo_tradingview():
+    """Lê o símbolo (MNQ, NQ, NAS100...) do título da janela do gráfico."""
+    if not HAS_WIN32:
+        return None
+    candidatos = []
+
+    def enum_cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            tit = win32gui.GetWindowText(hwnd).strip()
+            if tit and any(k in tit for k in ["TradingView", "Lumitrader", "Futures",
+                                              "Index", "Nasdaq", "CME", "Chrome",
+                                              "Brave", "Edge"]):
+                candidatos.append(tit)
+
+    try:
+        win32gui.EnumWindows(enum_cb, None)
+    except Exception:
+        return None
+
+    for tit in candidatos:
+        up = tit.upper()
+        if "MICRO E-MINI NASDAQ" in up or "MNQ" in up:
+            m = re.search(r"\b(MNQ[A-Z0-9!]{1,6})\b", up)
+            return m.group(1) if m else "MNQ"
+        if "E-MINI NASDAQ" in up or "NQ1!" in up:
+            m = re.search(r"\b(NQ[A-Z0-9!]{1,6})\b", up)
+            return m.group(1) if m else "NQ"
+        for alias in ["NAS100", "USTEC", "US100", "QQQ"]:
+            if alias in up:
+                return alias
+    return None
+
+
+def preview_jpeg(img, max_largura=960, qualidade=45, escala_min=0):
+    """JPEG compacto para o dashboard (bytes). Reduz para caber em `max_largura`."""
+    from io import BytesIO
+
+    alvo = img
+    if img.size[0] > max_largura:
+        fator = max_largura / img.size[0]
+        alvo = img.resize((max_largura, max(1, int(img.size[1] * fator))),
+                          Image.Resampling.LANCZOS)
+    elif escala_min and img.size[0] < escala_min:
+        fator = escala_min / img.size[0]
+        alvo = img.resize((escala_min, max(1, int(img.size[1] * fator))),
+                          Image.Resampling.NEAREST)
+    buf = BytesIO()
+    alvo.save(buf, format="JPEG", quality=qualidade, optimize=True)
+    return buf.getvalue()
+</file>
+
+<file path="sentinel/ml.py">
+"""Filtro de oportunidades por Machine Learning (regressão logística pura Python).
+
+Sem numpy/scikit-learn: o modelo é uma regressão logística com 14 features
+(10 da geometria das velas em velas.py + 4 dos indicadores do setup —
+EMAs 9/20/200 e VWAP — em indicadores.py), padronização por média/desvio e
+gradiente descendente — tudo stdlib, para instalar leve no Python 3.14.
+
+Três fontes de modelo:
+  1. bootstrap sintético — modelo inicial treinado numa função-plausível de
+     continuação (corpo decisivo + momentum a favor elevam a probabilidade;
+     mechas longas contra a direção reduzem). Vale até ter dados reais;
+  2. dados reais — o Sentinel grava cada sinal emitido + o resultado
+     (win/loss medido em pixels no próprio gráfico) em data/treino.jsonl;
+     `python ml.py treinar` re-treina a partir daí;
+  3. re-treino automático — quando acumulam >= min_novos exemplos rotulados,
+     o filtro re-treina em thread de fundo sem derrubar a sentinela.
+
+Uso (CLI):
+    python ml.py status           # info do modelo atual
+    python ml.py treinar          # re-treina (reais + sintético p/ complemente)
+"""
+import json
+import math
+import os
+import random
+import threading
+import time
+
+import velas as velas_mod
+import indicadores as ind_mod
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CAMINHO_MODELO = os.path.join(BASE_DIR, "modelo_ml.json")
+CAMINHO_TREINO = os.path.join(BASE_DIR, "data", "treino.jsonl")
+MIN_NOVOS_PARA_TREINO = 30       # exemplos novos antes do re-treino automático
+MIN_AMOSTRAS_REAIS = 60          # mínimo de reais para treinar só com reais
+
+# geometria das velas + indicadores do setup (sempre nesta ordem no vetor)
+NOMES_FEATURES = list(velas_mod.NOMES_FEATURES) + list(ind_mod.NOMES_FEATURES)
+N_FEATURES_VELAS = len(velas_mod.NOMES_FEATURES)   # 10
+N_FEATURES_IND = len(ind_mod.NOMES_FEATURES)       # 4 (EMAs/VWAP)
+N_FEATURES = N_FEATURES_VELAS + N_FEATURES_IND     # 14
+
+
+def _ajustar_dim(x):
+    """Garante N_FEATURES entradas (treino antigo gravava só as 10 da vela)."""
+    if len(x) == N_FEATURES:
+        return x
+    if len(x) > N_FEATURES:
+        return list(x[:N_FEATURES])
+    return list(x) + [0.0] * (N_FEATURES - len(x))
+
+
+# ------------------------------------------------------- modelo (LR pura)
+class ModeloLogistico:
+    def __init__(self, pesos=None, bias=0.0, medias=None, desvios=None,
+                 meta=""):
+        self.n = len(pesos) if pesos else 0
+        self.pesos = list(pesos) if pesos else []
+        self.bias = float(bias)
+        self.medias = list(medias) if medias else []
+        self.desvios = list(desvios) if desvios else []
+        self.meta = meta
+
+    def _padronizar(self, x):
+        if not self.medias:
+            return list(x)
+        return [(v - m) / (d if d > 1e-9 else 1.0)
+                for v, m, d in zip(x, self.medias, self.desvios)]
+
+    def probabilidade(self, x):
+        z = self.bias
+        xp = self._padronizar(x)
+        for w, v in zip(self.pesos, xp):
+            z += w * v
+        if z >= 0:
+            return 1.0 / (1.0 + math.exp(-z))
+        ez = math.exp(z)
+        return ez / (1.0 + ez)
+
+    def salvar(self, caminho=CAMINHO_MODELO):
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as f:
+            json.dump({
+                "versao": 1,
+                "pesos": [round(w, 6) for w in self.pesos],
+                "bias": round(self.bias, 6),
+                "medias": [round(m, 6) for m in self.medias],
+                "desvios": [round(d, 6) for d in self.desvios],
+                "meta": self.meta,
+                "treinado_em": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "n_features": len(self.pesos),
+            }, f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def carregar(cls, caminho=CAMINHO_MODELO):
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            return cls(pesos=d["pesos"], bias=d["bias"], medias=d["medias"],
+                       desvios=d["desvios"], meta=d.get("meta", ""))
+        except Exception:
+            return None
+
+
+# ------------------------------------------------------------- treino LR
+def _treinar_lr(X, y, epocas=250, lr=0.15, l2=0.002, semente=42):
+    """Gradiente descendente em lote com padronização. X: lista de vetores."""
+    n_amostras = len(X)
+    n_feat = len(X[0])
+
+    medias = [sum(col) / n_amostras for col in zip(*X)]
+    desvios = []
+    for j, m in enumerate(medias):
+        var = sum((linha[j] - m) ** 2 for linha in X) / n_amostras
+        desvios.append(math.sqrt(var) if var > 1e-12 else 1.0)
+    Xp = [[(v - medias[j]) / desvios[j] for j, v in enumerate(linha)]
+          for linha in X]
+
+    pesos = [0.0] * n_feat
+    bias = 0.0
+    rnd = random.Random(semente)
+    for _ in range(epocas):
+        g = [0.0] * n_feat
+        gb = 0.0
+        for linha, alvo in zip(Xp, y):
+            z = bias + sum(w * v for w, v in zip(pesos, linha))
+            p = 1.0 / (1.0 + math.exp(-max(-30, min(30, z))))
+            erro = p - alvo
+            for j, v in enumerate(linha):
+                g[j] += erro * v
+            gb += erro
+        bias -= lr * gb / n_amostras
+        for j in range(n_feat):
+            pesos[j] -= lr * (g[j] / n_amostras + l2 * pesos[j])
+        rnd.random()  # mantém determinismo reprodutível
+    return ModeloLogistico(pesos, bias, medias, desvios)
+
+
+def _acuracia(modelo, X, y):
+    if not y:
+        return 0.0
+    acertos = sum(1 for linha, alvo in zip(X, y)
+                  if (modelo.probabilidade(linha) >= 0.5) == (alvo == 1))
+    return acertos / len(y)
+
+
+# ------------------------------------------------- dados sintéticos (boot)
+def gerar_sinteticos(n=4000, semente=7):
+    """Amostras sintéticas com uma função-plausível de continuação de vela.
+
+    Serve só de arranque: o modelo aprende que corpo decisivo + momentum a
+    favor + sequência elevam P(continuar), enquanto mechas longas contra a
+    direção e amplitude anormal reduzem. Dados reais sobrepõem isso.
+    """
+    rnd = random.Random(semente)
+    X, y = [], []
+    for _ in range(n):
+        corpo = rnd.uniform(0.2, 3.2)
+        amp = max(corpo, corpo + rnd.uniform(0, 2.5))
+        decisao = corpo / amp
+        mechas = amp - corpo
+        seq = rnd.uniform(-1, 1)
+        mom = rnd.uniform(-2, 2)
+        pct = rnd.uniform(-1, 1)
+        cresc = rnd.uniform(0.3, 2.5)
+        dist = rnd.uniform(-2.5, 2.5)
+        tend = rnd.uniform(-1, 1)
+        # indicadores do setup (espelhados p/ a direção): alinhamento das EMAs
+        # e preço do lado certo do VWAP ajudam; EMA9 distante demais incomoda
+        stack = rnd.choice([-1.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.0])
+        vwap = rnd.uniform(-1.5, 1.5)
+        d_ema9 = rnd.uniform(-1.5, 1.5)
+        d_ema200 = rnd.uniform(-2, 2)
+        z = (-2.3 + 1.35 * decisao + 0.55 * corpo + 0.5 * mom + 0.4 * seq
+             + 0.35 * pct + 0.3 * tend + 0.25 * cresc - 0.3 * mechas
+             + 0.15 * dist
+             + 0.45 * stack + 0.30 * vwap + 0.20 * d_ema9 + 0.15 * d_ema200
+             + rnd.gauss(0, 0.55))
+        p = 1.0 / (1.0 + math.exp(-z))
+        X.append([corpo, amp, decisao, mechas, seq, mom, pct, cresc, dist, tend,
+                  stack, vwap, d_ema9, d_ema200])
+        y.append(1 if rnd.random() < p else 0)
+    return X, y
+
+
+# --------------------------------------------------- leitura de exemplos
+def ler_treino_real(caminho=CAMINHO_TREINO):
+    """Exemplos rotulados pelo próprio Sentinel (data/treino.jsonl)."""
+    X, y = [], []
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            for linha in f:
+                linha = linha.strip()
+                if not linha:
+                    continue
+                try:
+                    d = json.loads(linha)
+                    X.append(_ajustar_dim([float(v) for v in d["features"]]))
+                    y.append(1 if d["label"] else 0)
+                except Exception:
+                    continue
+    except FileNotFoundError:
+        pass
+    return X, y
+
+
+def treinar(somente_reais=False, salvar=True):
+    """Treina o modelo. Reais + sintético (complemento) por padrão."""
+    Xr, yr = ler_treino_real()
+    if somente_reais and len(yr) >= MIN_AMOSTRAS_REAIS:
+        X, y, fonte = Xr, yr, f"reais ({len(yr)})"
+    else:
+        Xs, ys = gerar_sinteticos()
+        X, y = Xr + Xs, yr + ys
+        fonte = (f"reais ({len(yr)}) + sintéticos ({len(ys)})"
+                 if yr else "sintéticos (arranque)")
+    if not y:
+        raise ValueError("sem dados para treinar")
+    # embaralha (mantém mistura representativa)
+    idx = list(range(len(y)))
+    random.Random(99).shuffle(idx)
+    X = [X[i] for i in idx]
+    y = [y[i] for i in idx]
+    corte = int(len(y) * 0.85)
+    modelo = _treinar_lr(X[:corte], y[:corte])
+    acc = _acuracia(modelo, X[corte:], y[corte:])
+    modelo.meta = f"{fonte} | acurácia holdout {acc:.1%}"
+    if salvar:
+        modelo.salvar()
+    return modelo, acc
+
+
+# ------------------------------------------------- rotulação de resultados
+class AcompanhadorResultados:
+    """Acompanha sinais emitidos e rotula o resultado em pixels.
+
+    Mede o fechamento seguinte no gráfico: alvo atingido na direção do sinal
+    -> label 1; stop atingido -> label 0; estourou o tempo -> usa o sinal do
+    movimento final. Cada resolução vira uma linha em data/treino.jsonl.
+    """
+
+    def __init__(self, alvo_atr=1.0, stop_atr=0.6, max_velas=6):
+        self.pendentes = []
+        self.alvo_atr = alvo_atr
+        self.stop_atr = stop_atr
+        self.max_velas = max_velas
+        self._novos = 0
+        self._lock = threading.Lock()
+
+    def registrar(self, features, direcao, fechamento_y, amp_ref, fechamento_ts):
+        with self._lock:
+            self.pendentes.append({
+                "features": list(features),
+                "direcao": direcao,
+                "entrada_y": float(fechamento_y),
+                "amp_ref": max(float(amp_ref), 1.0),
+                "velas": 0,
+                "fechamento_ts": fechamento_ts,
+            })
+
+    def atualizar(self, fechamento_y_atual):
+        """Chamar a cada novo fechamento de vela. Retorna nº de resolvidos."""
+        resolvidos = []
+        with self._lock:
+            sobras = []
+            for p in self.pendentes:
+                p["velas"] += 1
+                delta = (p["entrada_y"] - fechamento_y_atual)  # y cai = sobe
+                if p["direcao"] == "SELL":
+                    delta = -delta
+                dist = delta / p["amp_ref"]  # em unidades de amplitude
+                label = None
+                if dist >= self.alvo_atr:
+                    label = 1
+                elif dist <= -self.stop_atr:
+                    label = 0
+                elif p["velas"] >= self.max_velas:
+                    label = 1 if dist > 0 else 0
+                if label is None:
+                    sobras.append(p)
+                else:
+                    resolvidos.append((p, label))
+            self.pendentes = sobras
+            for p, label in resolvidos:
+                self._gravar(label, p.get("features"))
+        return len(resolvidos)
+
+    def _gravar(self, label, features=None):
+        reg = {"label": label, "ts": time.time()}
+        if features:
+            reg["features"] = [round(float(v), 5) for v in features]
+        try:
+            os.makedirs(os.path.dirname(CAMINHO_TREINO), exist_ok=True)
+            with open(CAMINHO_TREINO, "a", encoding="utf-8") as f:
+                f.write(json.dumps(reg) + "\n")
+        except Exception:
+            return
+        self._novos += 1
+
+    def precisa_treinar(self):
+        return self._novos >= MIN_NOVOS_PARA_TREINO
+
+    def registrar_treino_feito(self):
+        self._novos = 0
+
+
+# ------------------------------------------- filtro usado pelo checker
+class FiltroML:
+    """Interface do setup_checker: pontua a vela candidata com o modelo."""
+
+    def __init__(self):
+        self._modelo = None
+        self._lock = threading.Lock()
+
+    def carregar(self):
+        modelo = ModeloLogistico.carregar()
+        # modelo antigo (10 features, sem indicadores) -> re-treina na hora
+        if modelo is None or len(modelo.pesos) != N_FEATURES:
+            modelo, _ = treinar(somente_reais=False, salvar=True)
+        self._modelo = modelo
+        return modelo
+
+    @property
+    def modelo(self):
+        if self._modelo is None:
+            self.carregar()
+        return self._modelo
+
+    def pontuar(self, velas, direcao, extras=None):
+        """(probabilidade, features ou None).
+
+        `extras` são as features dos indicadores do setup (indicadores.py).
+        Sem elas o vetor entra com zeros — o modelo continua pontuando.
+        """
+        feats = velas_mod.extrair_features(velas, direcao)
+        if feats is None:
+            return None, None
+        feats = list(feats) + [float(v) for v in (extras or [])]
+        feats = _ajustar_dim(feats)
+        return self.modelo.probabilidade(feats), feats
+
+    def re_treinar_async(self, somente_reais=False):
+        def _rodar():
+            try:
+                with self._lock:
+                    novo, acc = treinar(somente_reais=somente_reais)
+                self._modelo = novo
+                return acc
+            except Exception:
+                return None
+        t = threading.Thread(target=_rodar, daemon=True, name="ml-treino")
+        t.start()
+        return t
+
+
+FILTRO = FiltroML()
+ACOMPANHA = AcompanhadorResultados()
+
+
+def _cli():
+    import sys
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "treinar":
+        m, acc = treinar(somente_reais=("reais" in sys.argv))
+        print(f"[ML] modelo treinado | holdout {acc:.1%} | {m.meta}")
+        print(f"[ML] pesos: " + ", ".join(
+            f"{n}={w:+.2f}" for n, w in zip(NOMES_FEATURES, m.pesos)))
+    else:
+        m = ModeloLogistico.carregar()
+        if m is None:
+            print("[ML] nenhum modelo em modelo_ml.json (será criado no 1º uso)")
+        else:
+            print(f"[ML] modelo: {m.meta}")
+            print("[ML] pesos: " + ", ".join(
+                f"{n}={w:+.2f}" for n, w in zip(NOMES_FEATURES, m.pesos)))
+        Xr, yr = ler_treino_real()
+        print(f"[ML] exemplos reais rotulados: {len(yr)} em {CAMINHO_TREINO}")
+
+
+if __name__ == "__main__":
+    _cli()
+</file>
+
+<file path="sentinel/servidor.py">
+"""Servidor HTTP local do dashboard (stdlib, sem dependências extras).
+
+Rotas:
+  GET /            -> dashboard/index.html
+  GET /api/state   -> snapshot JSON completo do estado (inclui previews b64)
+  GET /asset/<n>   -> arquivos estáticos do dashboard
+"""
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import estado
+
+_SERVIDOR = None
+_LOCK_SERV = threading.Lock()
+
+
+class _Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):  # silencia console
+        pass
+
+    def _responde(self, code, corpo, content_type="application/json; charset=utf-8"):
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(corpo)
+        except BrokenPipeError:
+            pass
+
+    def do_GET(self):
+        rota = self.path.split("?", 1)[0]
+        if rota == "/api/state":
+            try:
+                corpo = json.dumps(estado.snapshot(), ensure_ascii=False)
+            except Exception as exc:
+                corpo = json.dumps({"erro": str(exc)})
+            self._responde(200, corpo.encode("utf-8"))
+            return
+        if rota in ("/", "/index.html"):
+            self._arquivo(os.path.join(estado.DASH_DIR, "index.html"),
+                          "text/html; charset=utf-8")
+            return
+        if rota.startswith("/asset/"):
+            nome = os.path.basename(rota[len("/asset/"):])
+            caminho = os.path.join(estado.DASH_DIR, "assets", nome)
+            ext = os.path.splitext(nome)[1].lower()
+            tipos = {".js": "text/javascript; charset=utf-8",
+                     ".css": "text/css; charset=utf-8",
+                     ".svg": "image/svg+xml", ".png": "image/png"}
+            self._arquivo(caminho, tipos.get(ext, "application/octet-stream"))
+            return
+        self._responde(404, b'{"erro":"rota nao encontrada"}')
+
+    def do_POST(self):
+        rota = self.path.split("?", 1)[0]
+        try:
+            tamanho = int(self.headers.get("Content-Length", 0) or 0)
+            corpo = self.rfile.read(tamanho) if tamanho > 0 else b"{}"
+            dados = json.loads(corpo.decode("utf-8") or "{}")
+        except Exception:
+            self._responde(400, b'{"erro":"corpo invalido"}')
+            return
+
+        if rota == "/api/sinais/apagar":
+            try:
+                if dados.get("todos"):
+                    n = estado.apagar_sinais(todos=True)
+                else:
+                    n = estado.apagar_sinais(ids=dados.get("ids") or [])
+                resp = json.dumps({"ok": True, "removidos": int(n)})
+                self._responde(200, resp.encode("utf-8"))
+            except Exception as exc:
+                self._responde(500, json.dumps({"erro": str(exc)}).encode())
+            return
+
+        if rota == "/api/ia/testar":
+            try:
+                import juiz
+                resultado = juiz.testar_chave(dados.get("chave"))
+                self._responde(200,
+                               json.dumps(resultado, ensure_ascii=False).encode())
+            except Exception as exc:
+                self._responde(500, json.dumps({"erro": str(exc)}).encode())
+            return
+
+        self._responde(404, b'{"erro":"rota nao encontrada"}')
+
+    def _arquivo(self, caminho, content_type):
+        try:
+            with open(caminho, "rb") as f:
+                corpo = f.read()
+            self._responde(200, corpo, content_type)
+        except FileNotFoundError:
+            self._responde(404, b'{"erro":"arquivo nao encontrado"}',
+                           "application/json; charset=utf-8")
+
+
+def iniciar(porta):
+    """Sobe o servidor em thread daemon. Retorna a porta usada (pode mudar se ocupada)."""
+    global _SERVIDOR
+    with _LOCK_SERV:
+        if _SERVIDOR is not None:
+            return estado.STATE["porta_dashboard"]
+        portas = [porta] + list(range(porta + 1, porta + 10))
+        ultimo_erro = None
+        for p in portas:
+            try:
+                _SERVIDOR = ThreadingHTTPServer(("127.0.0.1", p), _Handler)
+                estado.STATE["porta_dashboard"] = p
+                threading.Thread(target=_SERVIDOR.serve_forever,
+                                 kwargs={"poll_interval": 0.4},
+                                 daemon=True, name="dash-http").start()
+                return p
+            except OSError as exc:
+                ultimo_erro = exc
+        estado.STATE["erro"] = f"dashboard não subiu: {ultimo_erro}"
+        return None
+</file>
+
+<file path="sentinel/velas.py">
+"""Extração de velas do gráfico por visão computacional (Pillow puro).
+
+Recebe a imagem da área do gráfico calibrada (RGB) e devolve as velas
+detectadas (corpo/mechas/altura em pixels) e as features numéricas usadas
+pelo filtro de machine learning (sentinel/ml.py).
+
+Sem OpenCV e sem numpy: o trabalho pesado (perfis por coluna/linha) é feito
+com `resize` BOX do Pillow, que roda em C.
+
+Pipeline:
+  1. máscaras HSV de vermelho/verde (mesmos limiares do sistema anterior);
+  2. recorta a "faixa de preço" (o cluster de linhas com mais pixels coloridos
+     — ignora painel de volume/legendas mesmo que entrem na ROI);
+  3. perfis por coluna -> segmentos = velas (espaçamento natural do TradingView);
+  4. geometria por vela: alto/baixo, corpo, mechas e direção;
+  5. `extrair_features` converte as últimas velas em vetor numérico.
+"""
+from PIL import Image, ImageChops
+
+# --------------------------------------------------------------- máscaras
+# Cores das velas em H do Pillow (0..255). O operador trocou a vela de alta
+# de verde por AZUL para não brigar com a EMA9 verde; por isso o padrão
+# aceita as duas — quem usa o vermelho/verde nativo do TradingView também
+# funciona sem mexer em nada. Ajuste fino em config.json -> visao.cores_vela.
+CORES_VELA = {
+    "alta":  {"faixas": [[50, 121], [140, 185]], "min_s": 110, "min_v": 70},
+    "baixa": {"faixas": [[0, 17], [238, 255]],   "min_s": 110, "min_v": 70},
+}
+
+
+def configurar_cores(cfg_cores_vela=None):
+    """Aplica as cores de vela do config.json. Devolve o dicionário efetivo."""
+    global CORES_VELA
+    if isinstance(cfg_cores_vela, dict):
+        novo = {k: dict(v) for k, v in CORES_VELA.items()}
+        for nome, cfg in cfg_cores_vela.items():
+            if nome in novo and isinstance(cfg, dict):
+                novo[nome].update(cfg)
+        CORES_VELA = novo
+    return CORES_VELA
+
+
+def _mascara_cor(cfg, h_ch, s_ch, v_ch):
+    """Máscara L (0/255) de uma direção de vela (faixas de matiz + S/V)."""
+    base = ImageChops.multiply(
+        s_ch.point(lambda p, m=cfg.get("min_s", 110): 255 if p >= m else 0),
+        v_ch.point(lambda p, m=cfg.get("min_v", 70): 255 if p >= m else 0))
+    mascara = None
+    for lo, hi in (cfg.get("faixas") or [[0, 255]]):
+        parte = h_ch.point(lambda p, lo=lo, hi=hi: 255 if lo <= p <= hi else 0)
+        mascara = parte if mascara is None else ImageChops.lighter(mascara, parte)
+    return ImageChops.multiply(mascara, base)
+
+
+def _mascaras_cor(img):
+    """(máscara baixa [vermelho], máscara alta [verde/azul]) como L 0/255."""
+    hsv = img.convert("HSV")
+    h_ch, s_ch, v_ch = hsv.split()
+    return (_mascara_cor(CORES_VELA["baixa"], h_ch, s_ch, v_ch),
+            _mascara_cor(CORES_VELA["alta"], h_ch, s_ch, v_ch))
+
+
+def _contagens_coluna(mask, w, h):
+    """Pixels coloridos por coluna (BOX resize = média da coluna em C)."""
+    faixa = mask.resize((w, 1), Image.Resampling.BOX)
+    return [round(p * h / 255) for p in faixa.getdata()]
+
+
+def _contagens_linha(mask, w, h):
+    """Pixels coloridos por linha (BOX resize = média da linha em C)."""
+    faixa = mask.resize((1, h), Image.Resampling.BOX)
+    return [round(p * w / 255) for p in faixa.getdata()]
+
+
+# ---------------------------------------------------- faixa de preço
+def _faixa_preco(combined, w, h):
+    """Retorna (y_topo, y_base) da faixa com velas.
+
+    Agrupa linhas com pixels coloridos; se houver vários blocos (ex.: painel
+    de volume embaixo), fica com o de maior massa de cor (preço domina).
+    """
+    linhas = _contagens_linha(combined, w, h)
+    minimo = max(2, int(h * 0.004))
+    blocos = []
+    inicio = None
+    for y, c in enumerate(linhas):
+        if c >= minimo:
+            if inicio is None:
+                inicio = y
+        elif inicio is not None:
+            blocos.append((inicio, y - 1))
+            inicio = None
+    if inicio is not None:
+        blocos.append((inicio, h - 1))
+    if not blocos:
+        return None
+
+    def massa(b):
+        return sum(linhas[b[0]:b[1] + 1])
+
+    topo, base = max(blocos, key=massa)
+    # funde blocos separados por <=3 linhas (corpo/mecha podem ter micro-buracos)
+    fundidos = [(topo, base)]
+    for b in blocos:
+        t0, t1 = b
+        if t0 > fundidos[-1][1] and t0 - fundidos[-1][1] <= 3:
+            fundidos[-1] = (fundidos[-1][0], t1)
+        elif (t0, t1) != (topo, base):
+            pass  # bloco descartado
+    return fundidos[0]
+
+
+# ------------------------------------------------------------- velas
+def extrair_velas(img, excluir_borda_dir=0.04):
+    """Detecta as velas da imagem do gráfico.
+
+    Retorna lista (mais antiga -> mais recente) de dicts:
+      dir      +1 (alta) / -1 (baixa)
+      alto, baixo, corpo_topo, corpo_base   coordenadas y (0 = topo)
+      corpo, amplitude                      pixels
+      largura                               pixels
+      fechamento_y                          y do fechamento (preço)
+    A vela em formação (última, muito mais estreita) é descartada.
+    """
+    w, h = img.size
+    if w < 24 or h < 24:
+        return []
+
+    baixa, alta = _mascaras_cor(img)
+    combined = ImageChops.lighter(baixa, alta)
+
+    faixa = _faixa_preco(combined, w, h)
+    if faixa is None:
+        return []
+    y0, y1 = faixa
+
+    # recorta a faixa de preço (também remove eixo de preços à direita)
+    margem_dir = max(4, int(w * excluir_borda_dir))
+    largura_scan = w - margem_dir
+    box = (0, y0, largura_scan, y1 + 1)
+    vr = baixa.crop(box)
+    vg = alta.crop(box)
+    cc = combined.crop(box)
+    sw, sh = cc.size
+
+    cnt_vr = _contagens_coluna(vr, sw, sh)
+    cnt_vg = _contagens_coluna(vg, sw, sh)
+    cnt_cc = [a + b for a, b in zip(cnt_vr, cnt_vg)]
+
+    # Limiar de "coluna com vela": precisa ignorar as linhas horizontais do
+    # setup (EMA9 verde entra na máscara verde com 1-3 px de espessura).
+    # 1,5% da altura da faixa de preço separa corpo/mecha de vela de um traço
+    # fino sem perder candles pequenos.
+    min_col = max(3, int(sh * 0.015))
+    segmentos = []
+    inicio = None
+    for x, c in enumerate(cnt_cc):
+        if c >= min_col:
+            if inicio is None:
+                inicio = x
+        elif inicio is not None:
+            segmentos.append((inicio, x - 1))
+            inicio = None
+    if inicio is not None:
+        segmentos.append((inicio, sw - 1))
+    if not segmentos:
+        return []
+
+    # descarta vela em formação (última muito estreita vs. as anteriores)
+    larguras = [b - a + 1 for a, b in segmentos]
+    if len(segmentos) > 1:
+        corpo_larguras = sorted(larguras[:-1])
+        mediana = corpo_larguras[len(corpo_larguras) // 2]
+        if larguras[-1] < max(2, mediana * 0.4):
+            segmentos = segmentos[:-1]
+            larguras = larguras[:-1]
+
+    velas = []
+    for (x0, x1), largura in zip(segmentos, larguras):
+        if largura < 2:
+            continue
+        box_v = (x0, 0, x1 + 1, sh)
+        linhas = _contagens_linha(cc.crop(box_v), largura, sh)
+        pintados = [y for y, c in enumerate(linhas) if c >= 1]
+        if not pintados:
+            continue
+        alto, baixo = pintados[0], pintados[-1]
+        # corpo = linhas com >=55% da largura colorida (mechas têm 1-2px)
+        limite_corpo = max(1, int(largura * 0.55))
+        corpo_rows = [y for y, c in enumerate(linhas) if c >= limite_corpo]
+        if corpo_rows:
+            corpo_topo, corpo_base = corpo_rows[0], corpo_rows[-1]
+        else:  # doji: corpo ~0
+            meio = (alto + baixo) // 2
+            corpo_topo = corpo_base = meio
+        corpo = corpo_base - corpo_topo
+        amplitude = baixo - alto
+        n_baixa = sum(1 for p in vr.crop(box_v).getdata() if p)
+        n_alta = sum(1 for p in vg.crop(box_v).getdata() if p)
+        dir_ = 1 if n_alta >= n_baixa else -1
+        fechamento_y = corpo_topo if dir_ == 1 else corpo_base
+        velas.append({
+            "dir": dir_,
+            "alto": alto + y0,
+            "baixo": baixo + y0,
+            "corpo_topo": corpo_topo + y0,
+            "corpo_base": corpo_base + y0,
+            "corpo": corpo,
+            "amplitude": max(amplitude, 1),
+            "largura": largura,
+            "fechamento_y": fechamento_y + y0,
+        })
+    return velas
+
+
+# -------------------------------------------------------- diagnóstico de zoom
+def diagnostico_zoom(velas):
+    """(nivel, mensagem) — orienta o operador sobre o zoom da área do gráfico.
+
+    nivel: "ok" | "apertado" | "distante" | "ruim"
+
+    O sistema precisa de corpo e amplitude suficientes em pixels para separar
+    vela de linha, medir o resultado em pixels e caber o EMA200 + VWAP na tela:
+    de 20 a 60 velas costuma ser o ponto ideal (ver README).
+    """
+    n = len(velas)
+    if n < 5:
+        return "ruim", "aproxime o zoom — o Sentinel precisa de pelo menos 5 velas"
+    larguras = sorted(v["largura"] for v in velas)
+    amps = sorted(v["amplitude"] for v in velas)
+    larg = larguras[len(larguras) // 2]
+    amp = amps[len(amps) // 2]
+    if n < 14:
+        return "apertado", "afaste um pouco o zoom — ideal 20 a 60 velas na tela"
+    if n > 80:
+        return "distante", "aproxime o zoom — ideal 20 a 60 velas na tela"
+    if larg < 4 or amp < 10:
+        return "distante", (f"velas miúdas (corpo {larg}px, amplitude {amp}px) "
+                            "— aproxime o zoom")
+    return "ok", f"zoom ideal — corpo {larg}px, amplitude {amp}px"
+
+
+# ------------------------------------------------------------- features
+def extrair_features(velas, direcao):
+    """Vetor numérico (orientado à direção candidata) das últimas velas.
+
+    Todas as features direcionais são espelhadas para `direcao`, então um
+    único modelo serve BUY e SELL. Requer >= 5 velas; retorna None se não.
+    """
+    if not velas or len(velas) < 5:
+        return None
+    s = 1 if direcao == "BUY" else -1
+
+    def _clip(x, lo, hi):
+        return max(lo, min(hi, x))
+
+    amps = sorted(v["amplitude"] for v in velas)
+    med_amp = max(amps[len(amps) // 2], 1)
+    ultima = velas[-1]
+
+    # 1-4: corpo/amplitude/mechas da última vela (normalizados pela mediana)
+    corpo_norm = _clip(ultima["corpo"] / med_amp, 0, 4)
+    amplitude_norm = _clip(ultima["amplitude"] / med_amp, 0, 4)
+    decisao = _clip(ultima["corpo"] / ultima["amplitude"], 0, 1)
+    mechas_norm = _clip((ultima["amplitude"] - ultima["corpo"]) / med_amp, 0, 4)
+
+    # 5: sequência de fechamentos na mesma direção (limitada, com sinal)
+    seq = 0
+    for v in reversed(velas):
+        if v["dir"] * s > 0:
+            seq += 1
+        else:
+            break
+    sequencia = _clip(seq, 0, 5) * s
+
+    # 6: momentum médio (corpo com sinal) das últimas 5 velas
+    ult5 = velas[-5:]
+    momentum5 = sum(v["corpo"] * v["dir"] * s for v in ult5) / (med_amp * 5)
+    momentum5 = _clip(momentum5, -3, 3)
+
+    # 7: fração de fechamentos a favor nas últimas 5
+    pct5 = sum(1 for v in ult5 if v["dir"] * s > 0) / 5.0
+    pct5 = pct5 * 2 - 1  # -1..1
+
+    # 8: corpo crescendo (última vs. anterior)
+    anterior = velas[-2]
+    corpo_crescendo = _clip(ultima["corpo"] / max(anterior["corpo"], 1), 0, 3)
+
+    # 9: distância do fechamento à mediana dos fechamentos (posição relativa)
+    fechs = sorted(v["fechamento_y"] for v in velas)
+    med_fech = fechs[len(fechs) // 2]
+    dist_media = _clip((med_fech - ultima["fechamento_y"]) * s / med_amp, -3, 3)
+
+    # 10: tendência das últimas 10 (média de direções)
+    ult10 = velas[-10:]
+    tendencia10 = sum(v["dir"] for v in ult10) / len(ult10) * s
+
+    return [
+        corpo_norm, amplitude_norm, decisao, mechas_norm, sequencia,
+        momentum5, pct5, corpo_crescendo, dist_media, tendencia10,
+    ]
+
+
+NOMES_FEATURES = [
+    "corpo_norm", "amplitude_norm", "decisao", "mechas_norm", "sequencia",
+    "momentum5", "pct5", "corpo_crescendo", "dist_media", "tendencia10",
+]
+</file>
+
+<file path="site/index.html">
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumi Sentinel Vision • sistema local</title>
+<meta name="description" content="Sentinel Vision: vigilância por visão computacional com alerta no fechamento de cada vela. Roda localmente na sua máquina." />
+<style>
+  :root{--bg:#070b14;--panel:#0d1527;--border:#1e293b;--blue:#38bdf8;--green:#34d399;--muted:#94a3b8;--text:#e2e8f0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.6;min-height:100vh;display:flex;flex-direction:column}
+  header{background:var(--panel);padding:16px 22px;border-bottom:1px solid var(--border)}
+  header h1{font-size:18px;color:var(--blue)}
+  main{max-width:760px;margin:0 auto;padding:40px 22px;flex:1}
+  .badge{display:inline-block;background:#1e293b;color:var(--green);font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;margin-bottom:18px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:30px 0 10px}
+  p{color:#cbd5e1;margin-bottom:10px}
+  code,pre{font-family:Consolas,'Cascadia Mono',monospace;font-size:14px}
+  code{background:#020617;border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--blue)}
+  pre{background:#020617;border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow-x:auto;color:#a5f3fc;margin-bottom:12px}
+  ol,ul{color:#cbd5e1;padding-left:22px;margin-bottom:10px}
+  li{margin-bottom:6px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:14px}
+  .destaque{border-left:3px solid var(--blue)}
+  footer{border-top:1px solid var(--border);padding:16px 22px;text-align:center;color:var(--muted);font-size:13px}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<header><h1>⚡ LUMI SENTINEL VISION</h1></header>
+<main>
+  <span class="badge">● site informativo — o sistema roda localmente</span>
+
+  <p>Este é o deploy estático do repositório. O Sentinel em si é um programa
+  <strong>Python local</strong>: ele captura a tela do TradingView, lê o
+  <strong>gráfico ao vivo</strong> (visão computacional), detecta o
+  <strong>fechamento de cada vela</strong>, filtra a oportunidade com
+  <strong>machine learning</strong>, confirma com a <strong>IA juiz (Groq)</strong> e,
+  se houver setup, dispara <strong>alerta visual + sonoro</strong> na janela e no
+  dashboard <code>http://127.0.0.1:8777/</code>.</p>
+
+  <div class="card destaque">
+    <p style="margin:0"><strong>Por que não é um site?</strong> O sistema precisa
+    ler a tela da <em>sua</em> máquina — isso só existe onde o TradingView está
+    aberto. Nada é enviado para a nuvem (exceto a imagem que você autoriza enviar
+    à IA juiz da Groq para confirmação); o dashboard é servido localmente pelo
+    próprio Python.</p>
+  </div>
+
+  <h2>Como rodar</h2>
+  <ol>
+    <li>Clone o repositório e entre na pasta:</li>
+  </ol>
+  <pre>git clone &lt;seu-repo&gt; &amp;&amp; cd trader-lab</pre>
+  <ol start="2">
+    <li>Inicie (cria o venv e instala <code>mss</code> + <code>pillow</code> automaticamente):</li>
+  </ol>
+  <pre>sentinel\INICIAR_SENTINELA.bat</pre>
+  <p>Ou, no terminal / VS Code, qualquer um destes funciona — o script se
+  reabre sozinho no venv se você usar o Python do sistema:</p>
+  <pre>python sentinel\sentinel.py
+python sentinel\sentinel.py --check   # só diagnostica o ambiente</pre>
+
+  <h2>Primeira configuração (na GUI)</h2>
+  <ol>
+    <li><strong>📈 Calibrar área do gráfico</strong> — arraste sobre as velas
+        (sem o eixo de preços). É a única calibração;</li>
+    <li><strong>▶️ Iniciar sentinela</strong> e abrir o dashboard;</li>
+    <li>No dashboard, clique em <em>Ativar som do alerta</em> (libera o áudio do navegador).</li>
+  </ol>
+
+  <h2>Pipeline de decisão (a cada vela)</h2>
+  <ol>
+    <li><strong>Visão computacional</strong> extrai corpo/mechas/direção das velas;</li>
+    <li><strong>Filtro ML</strong> (regressão logística) pontua a chance de
+        continuação — só passa acima do limiar (0.60);</li>
+    <li><strong>IA juiz (Groq)</strong> recebe a imagem + métricas e confirma ou
+        rejeita o setup;</li>
+    <li>Filtros de notícias, janela operacional e cooldown.</li>
+  </ol>
+
+  <h2>Machine learning que aprende sozinho</h2>
+  <p>Cada sinal emitido é acompanhado: o Sentinel mede se o preço andou a favor
+  ou contra e grava o resultado em <code>data/treino.jsonl</code>. Quando
+  acumulam ≥30 exemplos novos, o modelo <strong>re-treina automaticamente</strong>.
+  Comandos: <code>ml.py status</code> e <code>ml.py treinar</code>.</p>
+
+  <h2>IA juiz (Groq)</h2>
+  <p>Configure a chave <code>GROQ_API_KEY</code> (variável de ambiente ou
+  <code>config.json</code>) e a IA passa a confirmar cada setup visualmente.
+  Sem chave, o pipeline segue só com o ML.</p>
+
+  <h2>Regras do setup</h2>
+  <p>Tudo em <code>sentinel/config.json</code>: timeframe (1m…4h), limiar do ML,
+  exigência de confirmação da IA, cooldown, filtro de notícias alto impacto
+  USD/EUR, janela operacional e confirmação de gráfico vivo. Detalhes em
+  <code>sentinel/README.md</code>.</p>
+
+  <div class="card">
+    <p style="margin:0;color:var(--muted);font-size:14px">
+    ⚠️ É um <strong>sinalizador</strong>, não um executor de ordens: ele avisa,
+    a decisão e a execução continuam com você.</p>
+  </div>
+</main>
+<footer>Lumi Sentinel Vision — visão computacional para fechamento de velas · execução local</footer>
+</body>
+</html>
+</file>
+
+<file path="sentinel/dashboard/index.html">
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumi Sentinel Vision • Dashboard</title>
+<style>
+  :root{
+    --bg:#070b14; --panel:#0d1527; --panel2:#020617; --border:#1e293b;
+    --blue:#38bdf8; --green:#34d399; --red:#f87171; --yellow:#eab308;
+    --purple:#c084fc; --muted:#94a3b8; --text:#e2e8f0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+  header{background:var(--panel);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+  h1{font-size:19px;color:var(--blue);letter-spacing:.5px}
+  .badge{font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;background:#1e293b}
+  .on{color:var(--green)} .off{color:var(--red)} .warn{color:var(--yellow)}
+  .grid{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;padding:18px;max-width:1400px;margin:0 auto}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--border)}
+  .card .body{padding:14px}
+  #chartImg{width:100%;border-radius:8px;background:#000;display:block;min-height:180px;object-fit:contain}
+  .kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed #172033;font-size:14px}
+  .kv:last-child{border-bottom:none}
+  .kv b{font-weight:600}
+  .scorebar{height:10px;border-radius:6px;background:#1e293b;overflow:hidden;margin-top:6px}
+  .scorebar i{display:block;height:100%;background:linear-gradient(90deg,#f87171,#eab308,#34d399);transition:width .3s}
+  #alerta{padding:16px;text-align:center;font-size:20px;font-weight:800;letter-spacing:1px;border-radius:10px;background:#1e293b;color:var(--muted);transition:.2s}
+  #alerta.buy{background:#065f46;color:#fff;animation:pulse 1s infinite}
+  #alerta.sell{background:#7f1d1d;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.55)}}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px solid #172033}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .dir-buy{color:var(--green);font-weight:700}
+  .dir-sell{color:var(--red);font-weight:700}
+  .empty{color:#475569;font-size:13px;padding:14px;text-align:center}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;max-width:1400px;margin:0 auto}
+  button{background:#1e293b;color:var(--text);border:1px solid #334155;border-radius:8px;padding:9px 15px;font-size:13px;cursor:pointer;font-weight:600}
+  button:hover{background:#334155}
+  button.primary{background:#0ea5e9;border-color:#0ea5e9;color:#fff}
+  #flash{position:fixed;inset:0;pointer-events:none;opacity:0;transition:.25s;z-index:50}
+  #flash.buy{background:radial-gradient(circle,rgba(52,211,153,.34),transparent 70%);opacity:1}
+  #flash.sell{background:radial-gradient(circle,rgba(248,113,113,.34),transparent 70%);opacity:1}
+  .err{color:var(--red);font-size:12px;padding:0 18px 10px}
+  /* --- checkbox do histórico + botão apagar --- */
+  input[type=checkbox]{accent-color:#38bdf8;width:15px;height:15px;cursor:pointer}
+  .danger{background:#7f1d1d;border-color:#991b1b;color:#fecaca}
+  .danger:hover{background:#991b1b}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  /* --- campo da chave Groq + toast --- */
+  .ia-key{display:flex;gap:8px;margin-top:12px}
+  .ia-key input{flex:1;min-width:0;background:#020617;border:1px solid #334155;border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:Consolas,monospace}
+  .ia-key input:focus{outline:none;border-color:#38bdf8}
+  .ia-key input::placeholder{color:#475569;font-family:'Segoe UI',sans-serif}
+  #toast{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:200;pointer-events:none}
+  .toast{background:#0d1527;border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:11px 15px;font-size:13px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.55);max-width:340px;animation:toastIn .25s ease;transition:opacity .3s}
+  .toast.ok{border-left-color:var(--green)}
+  .toast.erro{border-left-color:var(--red)}
+  .toast.warn{border-left-color:var(--yellow)}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+  /* --- modal de confirmação interno (substitui o diálogo do Windows) --- */
+  #modalFundo{position:fixed;inset:0;background:rgba(2,6,23,.74);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(3px)}
+  #modalFundo.escondido{display:none}
+  #modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;width:min(410px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.7);animation:toastIn .2s ease}
+  #modal h3{font-size:16px;margin-bottom:8px;color:var(--text)}
+  #modal p{font-size:13.5px;color:var(--muted);line-height:1.55}
+  #modal .botoes{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+</style>
+</head>
+<body>
+<div id="flash"></div>
+<div id="toast"></div>
+<div id="modalFundo" class="escondido">
+  <div id="modal">
+    <h3 id="modalTitulo">Confirmar</h3>
+    <p id="modalMsg"></p>
+    <div class="botoes">
+      <button id="modalNao">Cancelar</button>
+      <button id="modalSim" class="danger">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <h1>⚡ LUMI SENTINEL VISION</h1>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="badge" id="badgeOnline">● verificando...</span>
+    <span class="badge" id="badgeRun">⏸ parado</span>
+    <span class="badge" style="color:var(--purple)" id="badgeAtivo">—</span>
+    <span class="badge" style="color:var(--blue)" id="badgeTF">—</span>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <h2>📺 Tela do gráfico (ao vivo)</h2>
+    <div class="body"><img id="chartImg" alt="aguardando calibração do gráfico" /></div>
+  </div>
+
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>🚨 Alerta</h2>
+      <div class="body">
+        <div id="alerta">AGUARDANDO SETUP</div>
+        <div class="kv" style="margin-top:12px"><span>Velas reconhecidas</span><b id="vVelas">—</b></div>
+        <div class="kv"><span>Zoom do gráfico</span><b id="vZoom" style="font-size:12px;font-weight:600;text-align:right">—</b></div>
+        <div class="kv"><span>Última checagem</span><b id="vChecagem" style="text-align:right;font-weight:500">—</b></div>
+        <div class="kv"><span>Próxima vela</span><b id="vVela" style="color:var(--green)">—</b></div>
+        <div class="kv"><span>Filtros</span><b id="vFiltro" style="font-weight:500">—</b></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>🧠 Filtro matemático (ML)</h2>
+      <div class="body">
+        <div class="kv"><span>P(continuação)</span><b id="vScore">—</b></div>
+        <div class="scorebar"><i id="scoreBar" style="width:0%"></i></div>
+        <div class="kv" style="margin-top:6px"><span>Limiar</span><b id="vLimiar">—</b></div>
+        <div class="kv"><span>Setup (EMAs/VWAP)</span>
+          <b id="vSetup" style="font-size:12px;font-weight:600;text-align:right">—</b></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>🤖 IA juiz (Groq)</h2>
+      <div class="body">
+        <div class="kv"><span>Status</span><b id="vIaStatus">—</b></div>
+        <div class="kv"><span>Último veredito</span><b id="vIaVeredito" style="text-align:right;font-weight:500">—</b></div>
+        <div class="ia-key">
+          <input id="inpChave" type="password" placeholder="Cole a chave Groq (gsk_…)" autocomplete="off" spellcheck="false" />
+          <button id="btnTestarIA">Testar</button>
+        </div>
+        <small style="color:#64748b;display:block;margin-top:7px;font-size:11px">
+          A chave é salva só nesta máquina (<code>data/groq_key.txt</code>, fora do git).
+        </small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔊 Som</h2>
+      <div class="body" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" id="btnSom">Ativar som do alerta</button>
+        <button id="btnTeste">Testar beep</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btnRecarregar">↻ Recarregar agora</button>
+  <button id="btnApagar" class="danger" disabled>🗑 Apagar selecionados</button>
+  <button id="btnApagarTudo" class="danger" disabled>🧹 Limpar histórico</button>
+  <span style="color:var(--muted);font-size:12px;align-self:center" id="ultimaAtualizacao">—</span>
+</div>
+
+<div class="card" style="max-width:1400px;margin:0 auto 24px;border-radius:12px">
+  <h2>📋 Histórico de sinais</h2>
+  <div class="body" style="padding:0">
+    <table>
+      <thead><tr>
+        <th style="width:34px" title="marcar/destamar todos">
+          <input type="checkbox" id="chkTodos" />
+        </th>
+        <th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>ML</th><th>IA</th><th>Detalhe</th>
+      </tr></thead>
+      <tbody id="tbSinais"><tr><td colspan="8" class="empty">nenhum sinal ainda</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<div class="err" id="vErro"></div>
+
+<script>
+let somAtivo = false;
+let audioCtx = null;
+let ultimoSinalId = 0;
+let primeiroLoad = true;
+
+function beep(direcao){
+  if(!somAtivo) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const freqs = direcao === 'BUY' ? [660,880,1180] : [1180,880,660];
+    const agora = audioCtx.currentTime;
+    freqs.forEach((f,i)=>{
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(f, agora + i*0.22);
+      g.gain.setValueAtTime(0.25, agora + i*0.22);
+      g.gain.exponentialRampToValueAtTime(0.001, agora + i*0.22 + 0.3);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(agora + i*0.22); o.stop(agora + i*0.22 + 0.32);
+    });
+    // alarme repetido por 30s (padrão do sistema modelo)
+    const fim = Date.now() + 30000;
+    const rep = setInterval(()=>{
+      if(Date.now() > fim || !somAtivo){ clearInterval(rep); return; }
+      const t = audioCtx.currentTime;
+      freqs.forEach((f,i)=>{
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        o.type='square'; o.frequency.setValueAtTime(f, t + i*0.22);
+        g.gain.setValueAtTime(0.18, t + i*0.22);
+        g.gain.exponentialRampToValueAtTime(0.001, t + i*0.22 + 0.3);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t + i*0.22); o.stop(t + i*0.22 + 0.32);
+      });
+    }, 2000);
+  }catch(e){ console.warn('áudio bloqueado', e); }
+}
+
+document.getElementById('btnSom').addEventListener('click', e=>{
+  somAtivo = !somAtivo;
+  e.target.textContent = somAtivo ? '🔊 Som ATIVADO' : 'Ativar som do alerta';
+  if(somAtivo){
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    audioCtx.resume();
+    beep('BUY'); beep('SELL');
+  }
+});
+document.getElementById('btnTeste').addEventListener('click', ()=>{
+  if(!somAtivo){ somAtivo = true;
+    document.getElementById('btnSom').textContent = '🔊 Som ATIVADO'; }
+  beep('BUY');
+});
+document.getElementById('btnRecarregar').addEventListener('click', ()=>poll());
+
+// ------------------------------------------------ selecionar / apagar
+const selecionados = new Set();
+let sinaisVisiveis = [];
+
+function toast(msg, tipo){
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (tipo || '');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=>el.remove(), 400); }, 4500);
+}
+
+// modal de confirmação interno (nada de diálogo do Windows/navegador)
+let _modalResolve = null;
+function modalConfirmar(titulo, msg, rotuloSim){
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalMsg').textContent = msg;
+  document.getElementById('modalSim').textContent = rotuloSim || 'Confirmar';
+  document.getElementById('modalFundo').classList.remove('escondido');
+  return new Promise(res=>{ _modalResolve = res; });
+}
+function _fechaModal(valor){
+  document.getElementById('modalFundo').classList.add('escondido');
+  if(_modalResolve){ const r = _modalResolve; _modalResolve = null; r(valor); }
+}
+document.getElementById('modalSim').addEventListener('click', ()=>_fechaModal(true));
+document.getElementById('modalNao').addEventListener('click', ()=>_fechaModal(false));
+document.getElementById('modalFundo').addEventListener('click', e=>{
+  if(e.target.id === 'modalFundo') _fechaModal(false);
+});
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && _modalResolve) _fechaModal(false);
+});
+
+function sincronizarTodos(){
+  const chk = document.getElementById('chkTodos');
+  const n = sinaisVisiveis.length;
+  const marcados = sinaisVisiveis.filter(s=>selecionados.has(s.id)).length;
+  chk.checked = n > 0 && marcados === n;
+  chk.indeterminate = marcados > 0 && marcados < n;
+}
+function atualizarBotoes(){
+  document.getElementById('btnApagar').disabled = selecionados.size === 0;
+  document.getElementById('btnApagarTudo').disabled = sinaisVisiveis.length === 0;
+}
+
+document.getElementById('tbSinais').addEventListener('change', e=>{
+  const el = e.target;
+  if(!el.classList || !el.classList.contains('chk-sinal')) return;
+  const id = Number(el.dataset.id);
+  if(el.checked) selecionados.add(id); else selecionados.delete(id);
+  sincronizarTodos(); atualizarBotoes();
+});
+
+document.getElementById('chkTodos').addEventListener('change', e=>{
+  if(e.target.checked) sinaisVisiveis.forEach(s=>selecionados.add(s.id));
+  else selecionados.clear();
+  pintarSinais(sinaisVisiveis);
+});
+
+async function _apagar(ids, todos){
+  try{
+    const resp = await fetch('/api/sinais/apagar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(todos ? {todos: true} : {ids})});
+    const r = await resp.json();
+    if(!resp.ok || r.erro){ toast('Falha ao apagar: ' + (r.erro || resp.status), 'erro'); return; }
+    if(todos) selecionados.clear(); else ids.forEach(id=>selecionados.delete(id));
+    toast('🗑 ' + r.removidos + ' sinal(is) apagado(s) do histórico', 'ok');
+    await poll();
+  }catch(e){
+    toast('Sem conexão com o Sentinel', 'erro');
+  }
+}
+
+document.getElementById('btnApagar').addEventListener('click', async ()=>{
+  const ids = [...selecionados];
+  if(!ids.length) return;
+  const ok = await modalConfirmar('Apagar sinais',
+    `Remover ${ids.length} sinal(is) selecionado(s) do histórico? ` +
+    'O arquivo local data/signals.jsonl também é regravado.', 'Apagar');
+  if(ok) await _apagar(ids, false);
+});
+
+document.getElementById('btnApagarTudo').addEventListener('click', async ()=>{
+  if(!sinaisVisiveis.length) return;
+  const ok = await modalConfirmar('Limpar histórico',
+    `Apagar TODOS os ${sinaisVisiveis.length} sinais listados? ` +
+    'Esta ação não pode ser desfeita.', 'Apagar tudo');
+  if(ok) await _apagar([], true);
+});
+
+// ------------------------------------------------------- chave da IA (Groq)
+const inpChave = document.getElementById('inpChave');
+const btnTestarIA = document.getElementById('btnTestarIA');
+async function testarIA(){
+  const chave = inpChave.value.trim();
+  btnTestarIA.disabled = true;
+  btnTestarIA.textContent = 'Testando…';
+  try{
+    const resp = await fetch('/api/ia/testar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(chave ? {chave} : {})});
+    const r = await resp.json();
+    if(r.ok){
+      toast('✅ IA Groq ativa e respondendo' + (r.modelo ? ' — ' + r.modelo : ''), 'ok');
+      if(r.nota) toast('⚠ ' + r.nota, 'warn');
+      inpChave.value = '';
+      inpChave.placeholder = 'chave salva ✓';
+      setTimeout(()=>{ inpChave.placeholder = 'Cole a chave Groq (gsk_…)'; }, 6000);
+    }else{
+      toast('⚠ ' + (r.status || 'não foi possível validar') +
+            (r.erro ? ' — ' + r.erro : ''), r.status && r.status.indexOf('nenhuma chave') === 0 ? 'warn' : 'erro');
+    }
+  }catch(e){
+    toast('Sem conexão com o Sentinel', 'erro');
+  }
+  btnTestarIA.disabled = false;
+  btnTestarIA.textContent = 'Testar';
+  poll();
+}
+btnTestarIA.addEventListener('click', testarIA);
+inpChave.addEventListener('keydown', e=>{ if(e.key === 'Enter') testarIA(); });
+
+function fmtHora(iso){
+  try{ return iso.slice(11,19); }catch(e){ return iso; }
+}
+
+function pintarSinais(sinais){
+  sinaisVisiveis = sinais || [];
+  const tb = document.getElementById('tbSinais');
+  if(!sinaisVisiveis.length){
+    selecionados.clear();
+    tb.innerHTML = '<tr><td colspan="8" class="empty">nenhum sinal ainda</td></tr>';
+    sincronizarTodos(); atualizarBotoes();
+    return;
+  }
+  tb.innerHTML = sinaisVisiveis.map(s=>{
+    const ml = (s.score_ml!=null) ? Math.round(s.score_ml*100)+'%' : '—';
+    const ia = (s.ia && s.ia.confirma!=null)
+      ? (s.ia.confirma ? '✔ '+s.ia.confianca+'%' : '✘ '+s.ia.confianca+'%')
+      : (s.ia && s.ia.motivo ? '—' : '—');
+    const marcado = selecionados.has(s.id) ? 'checked' : '';
+    return `
+    <tr>
+      <td><input type="checkbox" class="chk-sinal" data-id="${s.id}" ${marcado} /></td>
+      <td>${fmtHora(s.ts)}</td>
+      <td>${s.symbol||'—'}</td>
+      <td class="${s.direction==='BUY'?'dir-buy':'dir-sell'}">${s.direction}</td>
+      <td>${s.timeframe||'—'}</td>
+      <td>${ml}</td>
+      <td style="color:#c084fc">${ia}</td>
+      <td style="color:#94a3b8">${s.info||''}</td>
+    </tr>`;}).join('');
+  // some da seleção o que já não está na lista devolvida pelo servidor
+  const visiveis = new Set(sinaisVisiveis.map(s=>s.id));
+  [...selecionados].forEach(id=>{ if(!visiveis.has(id)) selecionados.delete(id); });
+  sincronizarTodos();
+  atualizarBotoes();
+}
+
+async function poll(){
+  try{
+    const resp = await fetch('/api/state', {cache:'no-store'});
+    const s = await resp.json();
+    if(s.erro){ document.getElementById('vErro').textContent = '⚠ ' + s.erro; }
+
+    const badge = document.getElementById('badgeOnline');
+    if(s.online){ badge.textContent = '● SENTINELA ONLINE'; badge.className = 'badge on'; }
+    else { badge.textContent = '○ SEM SINAL DE TELA'; badge.className = 'badge off'; }
+
+    const run = document.getElementById('badgeRun');
+    if(s.rodando){ run.textContent = '▶ vigiando'; run.className = 'badge on'; }
+    else { run.textContent = '⏸ parado'; run.className = 'badge'; }
+
+    document.getElementById('badgeAtivo').textContent = s.ativo || '—';
+    document.getElementById('badgeTF').textContent = (s.timeframe_seg>=60 ? (s.timeframe_seg/60)+'m' : s.timeframe_seg+'s');
+    document.getElementById('vChecagem').textContent = s.ultima_checagem || '—';
+    document.getElementById('vVelas').textContent = (s.velas_reconhecidas!=null) ? s.velas_reconhecidas : '—';
+
+    // zoom da área do gráfico (orientação para o operador)
+    const vZoom = document.getElementById('vZoom');
+    if(s.zoom && s.zoom.msg){
+      vZoom.textContent = s.zoom.msg;
+      vZoom.style.color = (s.zoom.nivel === 'ok') ? 'var(--green)' : 'var(--yellow)';
+    } else {
+      vZoom.textContent = 'calibre o gráfico';
+      vZoom.style.color = 'var(--muted)';
+    }
+
+    // ML
+    const score = s.score_ml;
+    const limiar = (s.limiar_ml!=null) ? s.limiar_ml : 0.60;
+    document.getElementById('vLimiar').textContent = limiar.toFixed(2);
+    if(score!=null){
+      document.getElementById('vScore').textContent = (score*100).toFixed(0)+'%';
+      document.getElementById('scoreBar').style.width = Math.round(score*100)+'%';
+    } else {
+      document.getElementById('vScore').textContent = '—';
+      document.getElementById('scoreBar').style.width = '0%';
+    }
+
+    // portões do setup (EMAs 9/20/200 + VWAP lidos no gráfico)
+    const st = s.setup;
+    const vSetup = document.getElementById('vSetup');
+    if(st && st.tendencia){
+      const linhas = (st.linhas && st.linhas.length)
+        ? st.linhas.map(n=>n.toUpperCase()).join(' · ') : 'nenhuma linha visível';
+      const vw = (st.preco_vwap===true) ? 'preço > VWAP'
+               : (st.preco_vwap===false) ? 'preço < VWAP' : 'VWAP ?';
+      vSetup.textContent = `${st.tendencia} • ${vw} • ${linhas}`;
+      vSetup.style.color = (st.ausentes && st.ausentes.length) ? 'var(--yellow)' : 'var(--green)';
+    } else {
+      vSetup.textContent = 'aguardando captura do gráfico';
+      vSetup.style.color = 'var(--muted)';
+    }
+
+    // IA juiz
+    const v = s.veredito_ia;
+    const temChave = s.ia_ativa;
+    document.getElementById('vIaStatus').textContent =
+      temChave ? 'ativa (Groq)' : 'desligada — cole a chave abaixo';
+    if(v && v.confirma!=null){
+      document.getElementById('vIaVeredito').textContent =
+        (v.confirma?'✔ CONFIRMOU':'✘ REJEITOU') + ' ('+v.confianca+'%) — '+(v.motivo||'');
+    } else {
+      document.getElementById('vIaVeredito').textContent = '—';
+    }
+
+    if(s.rodando && s.proxima_vela_ts){
+      const falta = Math.max(0, s.proxima_vela_ts - s.agora);
+      const mm = Math.floor(falta/60), ss = Math.floor(falta%60);
+      document.getElementById('vVela').textContent = `em ${mm}:${String(ss).padStart(2,'0')}`;
+    } else {
+      document.getElementById('vVela').textContent = '—';
+    }
+
+    if(s.preview_chart_b64) document.getElementById('chartImg').src = 'data:image/jpeg;base64,' + s.preview_chart_b64;
+
+    document.getElementById('ultimaAtualizacao').textContent =
+      'atualizado às ' + new Date().toLocaleTimeString();
+
+    const alerta = document.getElementById('alerta');
+    const flash = document.getElementById('flash');
+    const novo = (s.sinais && s.sinais.length) ? s.sinais[0] : null;
+
+    if(novo && novo.id > ultimoSinalId && s.rodando){
+      if(!primeiroLoad || novo.id > 0){
+        if(!primeiroLoad){
+          alerta.textContent = (novo.direction==='BUY'?'🟢 SINAL DE COMPRA':'🔴 SINAL DE VENDA') + ' • ' + (novo.symbol||'') + ' ' + (novo.timeframe||'');
+          alerta.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+          flash.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+          setTimeout(()=>{ flash.className=''; }, 4000);
+          beep(novo.direction);
+        }
+      }
+      ultimoSinalId = novo.id;
+    } else if(s.rodando && s.flash){
+      if(novo){
+        alerta.textContent = (novo.direction==='BUY'?'🟢 SINAL DE COMPRA':'🔴 SINAL DE VENDA') + ' • ' + (novo.symbol||'');
+        alerta.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+      }
+    } else if(s.rodando && !s.flash){
+      alerta.textContent = 'AGUARDANDO SETUP';
+      alerta.className = '';
+    } else if(!s.rodando){
+      alerta.textContent = 'PAUSADO';
+      alerta.className = '';
+    }
+
+    pintarSinais(s.sinais || []);
+    primeiroLoad = false;
+  }catch(e){
+    document.getElementById('badgeOnline').textContent = '○ SEM CONEXÃO COM O SENTINELA';
+    document.getElementById('badgeOnline').className = 'badge off';
+  }
+}
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>
+</file>
+
+<file path="sentinel/calibrador.py">
+"""Calibrador standalone da área do gráfico — uso alternativo à GUI.
+
+    python calibrador.py
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  # noqa: E402
+
+bootstrap.garantir_ambiente(os.path.abspath(__file__))
+
+import tkinter as tk  # noqa: E402
+
+import captura  # noqa: E402
+import estado  # noqa: E402
+
+
+class SeletorArea:
+    def __init__(self, monitor):
+        self.monitor = monitor
+        self.root = tk.Tk()
+        self.root.overrideredirect(True)
+        w, h = monitor["width"], monitor["height"]
+        self.root.geometry(f"{w}x{h}{monitor['left']:+d}{monitor['top']:+d}")
+        self.root.attributes("-alpha", 0.3)
+        self.root.attributes("-topmost", True)
+        self.root.config(cursor="cross")
+        self.root.title(f"Calibrar ÁREA DO GRÁFICO — monitor {monitor['index']} (ESC cancela)")
+
+        self.canvas = tk.Canvas(self.root, cursor="cross", bg="grey")
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.create_text(
+            12, 12, anchor="nw", fill="white", font=("Segoe UI", 11, "bold"),
+            text=f"MONITOR {monitor['index']} • Arraste sobre a ÁREA DO GRÁFICO "
+                 f"(só as velas) • ESC cancela")
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.root.bind("<Escape>", lambda e: self.root.destroy())
+        self.start_x = self.start_y = self.rel_x = self.rel_y = None
+        self.rect = None
+
+    def on_press(self, e):
+        self.start_x, self.start_y = e.x_root, e.y_root
+        self.rel_x = e.x_root - self.monitor["left"]
+        self.rel_y = e.y_root - self.monitor["top"]
+        self.rect = self.canvas.create_rectangle(
+            self.rel_x, self.rel_y, self.rel_x + 1, self.rel_y + 1,
+            outline="red", width=2)
+
+    def on_drag(self, e):
+        rx, ry = e.x_root - self.monitor["left"], e.y_root - self.monitor["top"]
+        self.canvas.coords(self.rect, self.rel_x, self.rel_y, rx, ry)
+
+    def on_release(self, e):
+        x1, x2 = sorted((self.start_x, e.x_root))
+        y1, y2 = sorted((self.start_y, e.y_root))
+        coords = {"left": int(x1), "top": int(y1),
+                  "width": int(x2 - x1), "height": int(y2 - y1)}
+        if coords["width"] < 8 or coords["height"] < 8:
+            print("[!] Área muito pequena, nada salvo.")
+            self.root.destroy()
+            return
+        estado.salvar_roi_chart(coords)
+        print(f"[OK] ROI do gráfico salva: {coords}")
+        self.root.destroy()
+
+
+if __name__ == "__main__":
+    monitores = captura.listar_monitores()
+    print(f"Monitores: {len(monitores)}")
+    for m in monitores:
+        print(f"  [{m['index']}] {m['width']}x{m['height']} "
+              f"(x={m['left']}, y={m['top']})")
+    if len(monitores) > 1:
+        while True:
+            try:
+                escolha = int(input("Calibrar em qual monitor? [1/%s]: "
+                                    % "/".join(str(m["index"]) for m in monitores))
+                              or monitores[0]["index"])
+                monitor = next(m for m in monitores if m["index"] == escolha)
+                break
+            except (ValueError, StopIteration):
+                print("Opção inválida.")
+    else:
+        monitor = monitores[0]
+
+    SeletorArea(monitor).root.mainloop()
+</file>
+
+<file path="sentinel/config.json">
+{
+    "timeframe_seg": 60,
+    "delay_apos_fechamento_seg": 0.8,
+    "cooldown_seg": 120,
+    "retry_apos_fechamento_seg": 6,
+    "confirmacao_grafico_vivo": true,
+    "janela_operacional": {
+        "ativar": false,
+        "fuso": "Europe/Dublin",
+        "janelas": [
+            [
+                "08:15",
+                "11:00"
+            ],
+            [
+                "18:15",
+                "20:45"
+            ]
+        ]
+    },
+    "filtro_noticias": {
+        "ativar": true,
+        "minutos_antes": 15,
+        "minutos_depois": 15,
+        "paises": [
+            "USD",
+            "EUR"
+        ],
+        "impacto": "High"
+    },
+    "ml": {
+        "ativar": true,
+        "limiar": 0.6
+    },
+    "visao": {
+        "cores_vela": {
+            "alta": {
+                "faixas": [
+                    [50, 121],
+                    [140, 185]
+                ],
+                "min_s": 110,
+                "min_v": 70
+            },
+            "baixa": {
+                "faixas": [
+                    [0, 17],
+                    [238, 255]
+                ],
+                "min_s": 110,
+                "min_v": 70
+            }
+        }
+    },
+    "indicadores": {
+        "ativar": true,
+        "exigir": [
+            "ema9",
+            "ema20"
+        ],
+        "exigir_vwap": true,
+        "bloquear_mista": true,
+        "cores": {}
+    },
+    "ia_juiz": {
+        "ativar": true,
+        "exigir_confirmacao": true
+    },
+    "groq_api_key": "",
+    "porta_dashboard": 8777,
+    "som_local": true
+}
+</file>
+
+<file path="sentinel/estado.py">
+"""Estado compartilhado do Sentinel Vision.
+
+Todos os módulos (captura, checagem de velas, servidor do dashboard e GUI)
+leem/gravam aqui sob um único lock. O servidor HTTP expõe `snapshot()` em JSON.
+"""
+import json
+import os
+import threading
+import time
+from collections import deque
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CAMINHO_CONFIG = os.path.join(BASE_DIR, "config.json")
+CAMINHO_ROI_CHART = os.path.join(BASE_DIR, "roi_chart.json")
+CAMINHO_SINAIS = os.path.join(BASE_DIR, "data", "signals.jsonl")
+DASH_DIR = os.path.join(BASE_DIR, "dashboard")
+
+# ---------------------------------------------------------------- config
+CONFIG_PADRAO = {
+    "timeframe_seg": 60,
+    "delay_apos_fechamento_seg": 0.8,
+    "cooldown_seg": 120,
+    "retry_apos_fechamento_seg": 6,
+    "confirmacao_grafico_vivo": True,
+    "janela_operacional": {
+        "ativar": False,
+        "fuso": "Europe/Dublin",
+        "janelas": [["08:15", "11:00"], ["18:15", "20:45"]],
+    },
+    "filtro_noticias": {
+        "ativar": True,
+        "minutos_antes": 15,
+        "minutos_depois": 15,
+        "paises": ["USD", "EUR"],
+        "impacto": "High",
+    },
+    # filtro matemático (machine learning) no fechamento da vela
+    "ml": {
+        "ativar": True,
+        "limiar": 0.60,          # P(continuação) mínima para o sinal seguir
+    },
+    # cores das velas no gráfico (a alta foi trocada de verde para azul)
+    "visao": {
+        "cores_vela": {
+            "alta":  {"faixas": [[50, 121], [140, 185]], "min_s": 110, "min_v": 70},
+            "baixa": {"faixas": [[0, 17], [238, 255]],   "min_s": 110, "min_v": 70},
+        },
+    },
+    # portões do setup do operador: EMAs 9/20/200 + VWAP lidos no gráfico
+    "indicadores": {
+        "ativar": True,            # false = ignora o setup e segue só com o ML
+        "exigir": ["ema9", "ema20"],  # linhas que precisam estar visíveis
+        "exigir_vwap": True,       # preço precisa estar do lado certo do VWAP
+        "bloquear_mista": True,    # stack 9/20/200 fora de ordem = sem trade
+        "cores": {},               # override das cores (ver indicadores.py)
+    },
+    # juiz confirmador por IA (Groq). Chave: GROQ_API_KEY ou groq_api_key
+    "ia_juiz": {
+        "ativar": True,          # se a chave existir, o juiz participa
+        "exigir_confirmacao": True,  # sem CONFIRMAR da IA => sem sinal
+    },
+    "groq_api_key": "",
+    "porta_dashboard": 8777,
+    "som_local": True,
+}
+
+
+def carregar_config():
+    cfg = json.loads(json.dumps(CONFIG_PADRAO))  # cópia profunda
+    try:
+        with open(CAMINHO_CONFIG, "r", encoding="utf-8") as f:
+            usuario = json.load(f)
+        for chave, valor in usuario.items():
+            if isinstance(valor, dict) and isinstance(cfg.get(chave), dict):
+                cfg[chave].update(valor)
+            else:
+                cfg[chave] = valor
+    except FileNotFoundError:
+        salvar_config(cfg)
+    except Exception as exc:  # config corrompido: cai no padrão
+        STATE["erro"] = f"config.json inválido, usando padrão ({exc})"
+    return cfg
+
+
+def salvar_config(cfg):
+    with open(CAMINHO_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4, ensure_ascii=False)
+
+
+def carregar_roi(caminho):
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------- estado
+_LOCK = threading.Lock()
+
+STATE = {
+    "rodando": False,
+    "online": False,               # captura viva (heartbeat recente)
+    "ativo": "MNQ",
+    "timeframe_seg": 60,
+    "proxima_vela_ts": 0.0,
+    "ultima_vela_ts": 0.0,
+    "ultima_checagem": "aguardando início",
+    "flash_ate": 0.0,               # banner de alerta visível até este epoch
+    "sinal_seq": 0,
+    "roi_chart": None,
+    "preview_chart_b64": "",
+    "preview_ts": 0.0,
+    # pipeline de decisão (portões do setup + ML + IA juiz)
+    "velas_reconhecidas": 0,        # nº de velas detectadas na última captura
+    "zoom": None,                   # {"nivel": str, "msg": str} do diagnóstico
+    "setup": None,                  # EMAs/VWAP lidos no gráfico (indicadores)
+    "score_ml": None,               # P(continuação) da última avaliação
+    "veredito_ia": None,            # último veredito do juiz (dict) ou None
+    "erro": "",
+    "porta_dashboard": 8777,
+}
+
+SINAIS = deque(maxlen=200)
+
+
+def lock():
+    return _LOCK
+
+
+def carregar_rois_na_memoria():
+    STATE["roi_chart"] = carregar_roi(CAMINHO_ROI_CHART)
+    STATE["timeframe_seg"] = int(STATE["timeframe_seg"])
+
+
+def salvar_roi_chart(coords):
+    with open(CAMINHO_ROI_CHART, "w", encoding="utf-8") as f:
+        json.dump(coords, f, indent=4)
+    STATE["roi_chart"] = coords
+
+
+def _carregar_sinais_historicos():
+    try:
+        with open(CAMINHO_SINAIS, "r", encoding="utf-8") as f:
+            for linha in f:
+                linha = linha.strip()
+                if linha:
+                    SINAIS.appendleft(json.loads(linha))
+        if SINAIS:
+            STATE["sinal_seq"] = max(s.get("id", 0) for s in SINAIS)
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        STATE["erro"] = f"falha ao ler histórico de sinais: {exc}"
+
+
+def adicionar_sinal(sinal):
+    """Grava o sinal em memória + JSONL e dispara o flash visual."""
+    with _LOCK:
+        STATE["sinal_seq"] += 1
+        sinal["id"] = STATE["sinal_seq"]
+        STATE["flash_ate"] = time.time() + 8.0
+        SINAIS.appendleft(sinal)
+    try:
+        os.makedirs(os.path.dirname(CAMINHO_SINAIS), exist_ok=True)
+        with open(CAMINHO_SINAIS, "a", encoding="utf-8") as f:
+            f.write(json.dumps(sinal, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        STATE["erro"] = f"falha ao gravar sinal: {exc}"
+    return sinal
+
+
+def set_estado_velas(n):
+    """Atualiza quantas velas a visão reconheceu no gráfico."""
+    with _LOCK:
+        STATE["velas_reconhecidas"] = int(n)
+
+
+def apagar_sinais(ids=None, todos=False):
+    """Remove sinais do histórico (memória + data/signals.jsonl).
+
+    ids: lista de ids a remover; todos=True remove tudo.
+    Retorna o nº de sinais removidos.
+    """
+    with _LOCK:
+        if todos:
+            removidos = len(SINAIS)
+            SINAIS.clear()
+        else:
+            conjunto = set(ids or [])
+            antes = len(SINAIS)
+            restantes = [s for s in SINAIS if s.get("id") not in conjunto]
+            removidos = antes - len(restantes)
+            SINAIS.clear()
+            SINAIS.extend(restantes)
+        # regrava o arquivo em ordem cronológica (mais antigo primeiro)
+        try:
+            os.makedirs(os.path.dirname(CAMINHO_SINAIS), exist_ok=True)
+            with open(CAMINHO_SINAIS, "w", encoding="utf-8") as f:
+                for s in reversed(list(SINAIS)):
+                    f.write(json.dumps(s, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            STATE["erro"] = f"falha ao regravar sinais: {exc}"
+    return removidos
+
+
+def snapshot():
+    """Cópia consistente do estado para o dashboard (JSON-serializável)."""
+    with _LOCK:
+        copia = dict(STATE)
+        copia["agora"] = time.time()
+        copia["sinais"] = list(SINAIS)[:40]
+        copia["flash"] = STATE["flash_ate"] > copia["agora"]
+        copia.pop("flash_ate", None)
+        copia["roi_chart"] = dict(STATE["roi_chart"]) if STATE["roi_chart"] else None
+        # campos auxiliares p/ o dashboard (IA + limiar ML)
+        try:
+            import juiz as _juiz
+            copia["ia_ativa"] = _juiz.juiz_ativo()
+        except Exception:
+            copia["ia_ativa"] = False
+        copia["limiar_ml"] = float(CONFIG.get("ml", {}).get("limiar", 0.60))
+        return copia
+
+
+# inicialização (ordem importa: SINAIS preenchido antes do histórico)
+carregar_rois_na_memoria()
+_carregar_sinais_historicos()
+CONFIG = carregar_config()
+STATE["timeframe_seg"] = int(CONFIG.get("timeframe_seg", 60))
+STATE["porta_dashboard"] = int(CONFIG.get("porta_dashboard", 8777))
+
+# cores das velas (azul na alta / vermelho na baixa) para a visão computacional
+try:
+    import velas as _velas
+    _velas.configurar_cores(CONFIG.get("visao", {}).get("cores_vela"))
+except Exception:  # PIL indisponível: quem precisar falha depois, com mensagem
+    pass
+</file>
+
+<file path="sentinel/juiz.py">
+"""Juiz confirmador por IA (Groq) — valida visualmente o setup antes do sinal.
+
+Mesmo provedor e mesmo formato do sistema anterior:
+  POST https://api.groq.com/openai/v1/chat/completions
+  Authorization: Bearer <GROQ_API_KEY>
+
+Recebe a captura JPEG do gráfico + as features do ML e devolve
+CONFIRMAR / REJEITAR com justificativa curta (JSON do próprio modelo).
+
+Modelo de visão e texto:
+  qwen/qwen3.8-27b
+
+Chave da API (nesta ordem de precedência):
+  1. variável de ambiente GROQ_API_KEY;
+  2. config.json -> "groq_api_key" (legado);
+  3. arquivo local data/groq_key.txt (salvo pela GUI/dashboard — gitignorado).
+
+Sem chave: o juiz fica desligado e o pipeline segue só com o filtro ML
+(marcado como "IA não configurada", nunca quebra o Sentinel).
+"""
+import base64
+import json
+import os
+import re
+import threading
+import urllib.error
+import urllib.request
+
+import estado
+from estado import CONFIG
+
+URL_GROQ = "https://api.groq.com/openai/v1/chat/completions"
+URL_MODELS = "https://api.groq.com/openai/v1/models"
+CAMINHO_CHAVE = os.path.join(estado.BASE_DIR, "data", "groq_key.txt")
+MODELOS_VISAO = [
+    "qwen/qwen3.8-27b",
+]
+MODELO_TEXTO = "qwen/qwen3.8-27b"
+TIMEOUT_SEG = 45
+
+SYSTEM_PROMPT = (
+    "Você é o juiz de confirmação de um sistema de sinais por visão "
+    "computacional que observa gráficos de futuros (MNQ/NQ) no TradingView. "
+    "Você recebe uma imagem do gráfico e as métricas quantitativas do setup. "
+    "Seu trabalho é REJEITAR setups ruins que passaram pelo filtro numérico: "
+    "cruzes de médias sem direção, lateralização, velas de indecisão (dojis), "
+    "suportes/resistências imediatos no caminho, ou qualquer coisa que "
+    "invalide a continuação sugerida pela última vela.\n"
+    "Responda APENAS com JSON válido, sem markdown, no formato:\n"
+    '{"veredito":"CONFIRMAR"|"REJEITAR","confianca":0-100,"motivo":"<max 12 palavras>"}'
+)
+
+
+_chave_arquivo = None  # cache da chave lida de data/groq_key.txt
+
+
+def _ler_chave_arquivo():
+    global _chave_arquivo
+    if _chave_arquivo is None:
+        try:
+            with open(CAMINHO_CHAVE, "r", encoding="utf-8") as f:
+                _chave_arquivo = f.read().strip()
+        except Exception:
+            _chave_arquivo = ""
+    return _chave_arquivo
+
+
+def chave_api():
+    """Resolve a chave ativa: env > config (legado) > arquivo local."""
+    chave = (os.environ.get("GROQ_API_KEY") or "").strip()
+    if chave:
+        return chave
+    cfg = (CONFIG.get("groq_api_key") or "").strip()
+    if cfg:
+        return cfg
+    return _ler_chave_arquivo() or None
+
+
+def salvar_chave(chave):
+    """Salva a chave no arquivo local (gitignorado) e atualiza o cache.
+
+    A chave NÃO vai para o config.json (versionado) para não vazar no git.
+    """
+    global _chave_arquivo
+    chave = (chave or "").strip()
+    os.makedirs(os.path.dirname(CAMINHO_CHAVE), exist_ok=True)
+    with open(CAMINHO_CHAVE, "w", encoding="utf-8") as f:
+        f.write(chave)
+    _chave_arquivo = chave
+    # limpa eventual chave legada do config para evitar duplicidade/confusão
+    if CONFIG.get("groq_api_key"):
+        CONFIG["groq_api_key"] = ""
+        try:
+            estado.salvar_config(CONFIG)
+        except Exception:
+            pass
+    return chave
+
+
+def testar_chave(chave=None):
+    """Valida a chave (grava só se ela passar no teste). Não lança exceção.
+
+    Retorna {"ok": bool, "status": str, "modelo": str, "erro": str, "nota": str}.
+    Faz uma geração mínima diretamente com o modelo do juiz. Uma chave nova
+    colada pelo usuário só é gravada depois de validar — nada de arquivo cheio
+    de chave errada.
+    """
+    nova = (chave or "").strip()
+    chave = nova or chave_api()
+    if not chave:
+        return {"ok": False, "status": "nenhuma chave configurada",
+                "modelo": "", "erro": "cole a chave Groq no campo acima",
+                "nota": ""}
+
+    def _falha(status, modelo="", erro=""):
+        return {"ok": False, "status": status, "modelo": modelo,
+                "erro": erro, "nota": ""}
+
+    # Teste real no endpoint de geração com o modelo usado pelo juiz, sem
+    # depender do endpoint de catálogo /models.
+    disponivel = MODELO_TEXTO
+    try:
+        payload = {"model": disponivel, "max_tokens": 8, "temperature": 0,
+                   "messages": [{"role": "user", "content": "Responda apenas: OK"}]}
+        req = urllib.request.Request(
+            URL_GROQ, data=json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {chave}",
+                     "Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detalhe = exc.read().decode("utf-8", errors="replace").strip()
+        try:
+            corpo = json.loads(detalhe)
+            detalhe = (corpo.get("error", {}).get("message") or detalhe)
+        except (ValueError, AttributeError):
+            pass
+        if not detalhe:
+            detalhe = f"HTTP {exc.code}"
+        return _falha("a Groq recusou a chave ou o acesso ao modelo",
+                      modelo=disponivel,
+                      erro=f"HTTP {exc.code} em chat/completions: {detalhe[:400]}")
+    except Exception as exc:
+        return _falha("chave válida, mas a geração falhou (crédito/quota?)",
+                      modelo=disponivel, erro=str(exc))
+
+    # 4) validou: só agora grava a chave nova
+    nota = ""
+    if nova:
+        try:
+            salvar_chave(nova)
+        except Exception as exc:
+            return _falha("não consegui salvar a chave",
+                          modelo=disponivel, erro=str(exc))
+        env = (os.environ.get("GROQ_API_KEY") or "").strip()
+        if env and env != nova:
+            nota = ("atenção: a variável GROQ_API_KEY tem prioridade "
+                    "e continua valendo no lugar desta.")
+    return {"ok": True, "status": "IA Groq ativa e respondendo",
+            "modelo": disponivel, "erro": "", "nota": nota}
+
+
+def juiz_ativo():
+    return bool(chave_api())
+
+
+def _montar_payload(jpeg_bytes, contexto, com_imagem=True):
+    texto = ("Setup candidato no fechamento da vela:\n"
+             + json.dumps(contexto, ensure_ascii=False))
+    conteudo = [{"type": "text", "text": texto}]
+    if com_imagem:
+        b64 = base64.b64encode(jpeg_bytes).decode()
+        conteudo.append({"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64}",
+                                       "detail": "low"}})
+    return {
+        "temperature": 0.2,
+        "max_tokens": 160,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": conteudo},
+        ],
+    }
+
+
+def _parse_veredito(texto):
+    """Extrai o JSON do veredito (tolerante a cercas de código)."""
+    if not texto:
+        return None
+    m = re.search(r"\{.*\}", texto, re.DOTALL)
+    if not m:
+        return None
+    try:
+        d = json.loads(m.group(0))
+    except Exception:
+        return None
+    veredito = str(d.get("veredito", "")).upper()
+    if veredito not in ("CONFIRMAR", "REJEITAR"):
+        return None
+    return {
+        "confirma": veredito == "CONFIRMAR",
+        "confianca": int(max(0, min(100, d.get("confianca", 50)))),
+        "motivo": str(d.get("motivo", ""))[:120],
+    }
+
+
+def _chamar_modelo(chave, modelo, jpeg_bytes, contexto, com_imagem=True):
+    payload = _montar_payload(jpeg_bytes, contexto, com_imagem=com_imagem)
+    payload["model"] = modelo
+    req = urllib.request.Request(
+        URL_GROQ,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {chave}",
+                 "Content-Type": "application/json"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=TIMEOUT_SEG) as resp:
+        dados = json.loads(resp.read().decode("utf-8"))
+    texto = dados["choices"][0]["message"]["content"]
+    return _parse_veredito(texto), texto
+
+
+_lock_juiz = threading.Lock()
+_modelo_utilizado = {"nome": None}
+
+
+def julgar(jpeg_bytes, contexto):
+    """Confirma/rejeita o setup. Retorna dict:
+      {"ativo": bool, "confirma": bool|None, "confianca": int,
+       "motivo": str, "modelo": str, "erro": str}
+
+    Nunca lança exceção: falha de rede/API vira `confirma=None` + erro, para
+    o setup_checker decidir (por padrão, sem confirmação da IA = sem sinal).
+    """
+    chave = chave_api()
+    if not chave:
+        return {"ativo": False, "confirma": None, "confianca": 0,
+                "motivo": "IA não configurada (GROQ_API_KEY)", "modelo": "",
+                "erro": ""}
+    if not jpeg_bytes:
+        return {"ativo": True, "confirma": None, "confianca": 0,
+                "motivo": "sem imagem do gráfico para o juiz", "modelo": "",
+                "erro": "imagem ausente"}
+
+    with _lock_juiz:
+        ordem = ([_modelo_utilizado["nome"]] if _modelo_utilizado["nome"]
+                 else []) + MODELOS_VISAO + [MODELO_TEXTO]
+        vistos = set()
+        ultimo_erro = ""
+        for modelo in ordem:
+            if not modelo or modelo in vistos:
+                continue
+            vistos.add(modelo)
+            com_imagem = modelo in MODELOS_VISAO
+            try:
+                veredito, _texto = _chamar_modelo(
+                    chave, modelo, jpeg_bytes, contexto, com_imagem=com_imagem)
+                if veredito is None:
+                    ultimo_erro = f"{modelo}: resposta sem veredito válido"
+                    continue
+                _modelo_utilizado["nome"] = modelo
+                return {"ativo": True, "confirma": veredito["confirma"],
+                        "confianca": veredito["confianca"],
+                        "motivo": veredito["motivo"], "modelo": modelo,
+                        "erro": ""}
+            except urllib.error.HTTPError as exc:
+                ultimo_erro = f"{modelo}: HTTP {exc.code}"
+            except Exception as exc:  # rede/timeout/parse
+                ultimo_erro = f"{modelo}: {exc}"
+    return {"ativo": True, "confirma": None, "confianca": 0,
+            "motivo": "IA indisponível — sinal bloqueado", "modelo": "",
+            "erro": ultimo_erro}
+</file>
+
+<file path="sentinel/README.md">
+# Lumi Sentinel Vision
+
+Sistema de **visão computacional** que observa o gráfico do TradingView ao
+vivo, detecta o **fechamento de cada vela**, filtra a oportunidade com
+**machine learning** e pede **confirmação à IA juiz (Groq)** antes de disparar
+**alerta visual + sonoro** na janela local e num **dashboard no navegador**.
+
+Não há mais "célula de status": a decisão vem de acompanhar o próprio gráfico
+(calibrado uma vez pela área "Área do gráfico").
+
+Substitui integralmente a versão anterior do trader-lab (API MT5 + React).
+
+## Como executar
+
+1. Duplo clique em `INICIAR_SENTINELA.bat` (cria o venv, instala `mss` e
+   `pillow`, abre a janela). Também funciona `python sentinel.py` — o
+   `bootstrap.py` reabre sozinho no venv se você usar o Python do sistema.
+2. Na janela: **📈 Calibrar área do gráfico** → arraste sobre as velas (sem o
+   eixo de preços). É a única calibração necessária.
+3. **▶️ Iniciar sentinela** → o relógio de velas passa a rodar.
+4. **🌐 Abrir dashboard** → `http://127.0.0.1:8777/` (clique em *Ativar som do
+   alerta* para liberar o áudio do navegador).
+
+Para criar o ícone no desktop: `CRIAR_ATALHO_DESKTOP.bat` (rode depois do
+primeiro `INICIAR_SENTINELA.bat`, pois o atalho aponta para o venv).
+
+## Pipeline de decisão (no fechamento de cada vela)
+
+1. **Visão computacional** (`velas.py`) extrai as velas da área do gráfico —
+   corpo, mechas, direção — via máscaras de cor HSV (Pillow puro, sem OpenCV).
+2. **Filtro matemático (ML)** (`ml.py`) — regressão logística que pontua
+   `P(continuação)` na direção da última vela, com 10 features (corpo
+   relativo, decisão, momentum, sequência, posição de fechamento…). Passa só
+   se `P >= ml.limiar` (padrão 0.60).
+3. **IA juiz (Groq)** (`juiz.py`) recebe a imagem do gráfico + as métricas e
+   confirma/rejeita o setup. Mesmo com score bom, a IA pode rejeitar (doji,
+   resistência imediata, lateralização). Sem veredito, o sinal é bloqueado
+   (configurável).
+4. **Filtros tradicionais** — bloqueio de notícias alto impacto (ForexFactory),
+   janela operacional, cooldown, confirmação de gráfico vivo.
+
+Fluxo: **relógio detecta o fechamento → visão extrai velas → ML pontua → IA
+confirma → filtros → sinal**.
+
+## Machine learning (`ml.py`)
+
+- **Modelo inicial**: regressão logística treinada num arranque sintético
+  (corpo decisivo + momentum a favor elevam `P`; mechas longas reduzem).
+  Funciona de imediato, mas é apenas o arranque.
+- **Aprendizado com dados reais**: cada sinal emitido é acompanhado — o
+  Sentinel mede se o preço andou na direção (alvo 1.0× amplitude) ou contra
+  (stop 0.6× amplitude) nos fechamentos seguintes, e grava o resultado
+  (`label`) com as features em `data/treino.jsonl`.
+- **Re-treino automático**: quando acumulam ≥30 exemplos novos rotulados, o
+  modelo re-treina sozinho (thread de fundo, sem derrubar a sentinela).
+
+Comandos manuais:
+
+```bash
+venv\Scripts\python.exe ml.py status    # vê modelo, pesos e nº de exemplos
+venv\Scripts\python.exe ml.py treinar   # re-treina agora (reais + sintéticos)
+```
+
+## IA juiz (Groq)
+
+Usa a mesma API do sistema anterior (`api.groq.com`, chat completions). Configure
+a chave por uma destas vias:
+
+- variável de ambiente `GROQ_API_KEY` (recomendado), ou
+- `config.json` → `"groq_api_key": "..."`.
+
+Modelo usado: `qwen/qwen3.8-27b` (texto e visão). Sem chave, o juiz fica desligado e o pipeline segue só com o ML
+(marcado no dashboard como "IA não configurada").
+
+Em `config.json`:
+
+```json
+"ia_juiz": { "ativar": true, "exigir_confirmacao": true }
+```
+
+`exigir_confirmacao: true` bloqueia o sinal se a IA não emitir veredito
+(indisponibilidade). `false` deixa o sinal passar sem confirmação da IA.
+
+## Regras do setup (todas em `config.json`)
+
+| Chave | Padrão | O que faz |
+|---|---|---|
+| `timeframe_seg` | 60 | Timeframe monitorado (também trocado pela GUI: 1m…4h) |
+| `delay_apos_fechamento_seg` | 0.8 | Espera após a virada para a vela assentar na tela |
+| `cooldown_seg` | 120 | Intervalo mínimo entre sinais |
+| `confirmacao_grafico_vivo` | true | Exige que a faixa direita do gráfico mudou |
+| `janela_operacional` | off | Bloqueia fora dos horários (fuso Europe/Dublin) |
+| `filtro_noticias` | on | Bloqueia ±15 min de notícias High USD/EUR (ForexFactory) |
+| `ml.ativar` | true | Liga/desliga o filtro matemático |
+| `ml.limiar` | 0.60 | P(continuação) mínima para o sinal seguir |
+| `ia_juiz.ativar` | true | Liga/desliga o juiz (requer chave Groq) |
+| `ia_juiz.exigir_confirmacao` | true | Sem veredito da IA = sem sinal |
+| `porta_dashboard` | 8777 | Porta local do dashboard (auto-incrementa se ocupada) |
+
+Sinais ficam em `data/signals.jsonl`; exemplos de treino em
+`data/treino.jsonl`; modelo aprendido em `modelo_ml.json`.
+
+## Arquitetura
+
+| Arquivo | Papel |
+|---|---|
+| `sentinel.py` | GUI (Tk) + threads (captura, velas, heartbeat) |
+| `velas.py` | Visão computacional: extrai velas/features do gráfico |
+| `ml.py` | Regressão logística (stdlib) + treino + rotulação |
+| `juiz.py` | Confirmação por IA (Groq, com imagem) |
+| `setup_checker.py` | Pipeline do fechamento da vela + filtros |
+| `captura.py` | Captura de tela, hash de gráfico vivo, preview |
+| `estado.py` | Estado compartilhado + config + sinais |
+| `servidor.py` | Dashboard HTTP local (stdlib) |
+| `bootstrap.py` | Auto-relanço no venv + diagnóstico (`--check`) |
+| `calibrador.py` | Calibrador standalone da área do gráfico |
+| `dashboard/index.html` | Dashboard (preview, alerta, ML, IA, histórico) |
+
+Dependências: apenas `mss` e `pillow` (OpenCV e numpy não são necessários).
+
+## Diagnóstico
+
+```bash
+venv\Scripts\python.exe sentinel.py --check   # ambiente + dependências
+venv\Scripts\python.exe ml.py status          # modelo ML + exemplos
+```
+
+> ⚠️ É um **sinalizador**, não um executor de ordens: ele avisa, a decisão e a
+> execução continuam com você.
+</file>
+
+<file path="sentinel/setup_checker.py">
+"""Checagem de setup no fechamento de cada vela — pipeline ML + IA juiz.
+
+Novo fluxo (sem célula de status):
+  1. o relógio dispara no fechamento da vela (epoch % timeframe == 0 + delay);
+  2. gráfico precisa estar vivo (faixa direita mudou desde a última checagem);
+  3. visão computacional extrai as velas da ROI do gráfico (velas.py) e
+     lê os indicadores do setup — EMAs 9/20/200 e VWAP (indicadores.py);
+  4. portões do setup: linhas visíveis, alinhamento das EMAs com a direção
+     e preço do lado certo do VWAP;
+  5. filtro matemático (regressão logística, ml.py) pontua P(continuação)
+     com as features das velas + dos indicadores — precisa >= `ml.limiar`;
+  6. juiz confirmador por IA (Groq, juiz.py) recebe a imagem + métricas e
+     pode rejeitar o setup mesmo com score bom;
+  7. bloqueio de notícias de alto impacto (ForexFactory) e janela operacional;
+  8. cooldown entre sinais.
+
+Retorna (sinal_dict_ou_None, motivo_str).
+"""
+import json
+import time
+import urllib.request
+from datetime import datetime, timedelta, timezone
+
+from estado import CONFIG, STATE, adicionar_sinal
+import captura
+import indicadores
+import juiz
+import ml
+import velas as velas_mod
+
+CACHE_NOTICIAS_SEG = 300  # 5 min
+_cache_noticias = {"ts": 0.0, "lista": []}
+
+
+# ------------------------------------------------------------------ velas
+def proximo_fechamento(timeframe_seg, agora=None):
+    """Epoch do próximo fechamento de vela para o timeframe atual."""
+    agora = agora if agora is not None else time.time()
+    tf = max(int(timeframe_seg), 10)
+    return (int(agora // tf) + 1) * tf
+
+
+def segundos_para_fechamento(timeframe_seg, agora=None):
+    agora = agora if agora is not None else time.time()
+    return max(0.0, proximo_fechamento(timeframe_seg, agora) - agora)
+
+
+# --------------------------------------------------------------- notícias
+def _buscar_noticias():
+    cfg = CONFIG["filtro_noticias"]
+    agora = time.time()
+    if agora - _cache_noticias["ts"] < CACHE_NOTICIAS_SEG and _cache_noticias["lista"]:
+        return _cache_noticias["lista"]
+    try:
+        req = urllib.request.Request(
+            "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+            headers={"User-Agent": "LumiSentinel/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+        hoje = datetime.now(timezone.utc).date()
+        self_semana = hoje + timedelta(days=(7 - hoje.weekday()))  # domingo
+        lista = []
+        for item in dados:
+            if item.get("impact") != cfg["impacto"]:
+                continue
+            if item.get("country") not in cfg["paises"]:
+                continue
+            try:
+                ts = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).timestamp()
+            except Exception:
+                continue
+            data_item = datetime.fromtimestamp(ts, timezone.utc).date()
+            if hoje <= data_item <= self_semana:
+                lista.append({"ts": ts, "titulo": item.get("title", ""),
+                              "country": item.get("country", "")})
+        _cache_noticias["ts"] = agora
+        _cache_noticias["lista"] = lista
+        return lista
+    except Exception as exc:
+        STATE["erro"] = f"calendário de notícias indisponível: {exc}"
+        return _cache_noticias["lista"]
+
+
+def noticias_bloqueando(agora=None, force=False):
+    """(True, evento) se estiver na janela de bloqueio; senão (False, None)."""
+    cfg = CONFIG["filtro_noticias"]
+    if not cfg["ativar"]:
+        return False, None
+    agora = agora if agora is not None else time.time()
+    if force:
+        _cache_noticias["ts"] = 0.0
+    for ev in _buscar_noticias():
+        diff = ev["ts"] - agora
+        if -cfg["minutos_depois"] * 60 <= diff <= cfg["minutos_antes"] * 60:
+            return True, ev
+    return False, None
+
+
+# ------------------------------------------------ janela operacional
+def dentro_da_janela(agora=None):
+    cfg = CONFIG["janela_operacional"]
+    if not cfg["ativar"]:
+        return True, None
+    agora = agora if agora is not None else time.time()
+    try:
+        from zoneinfo import ZoneInfo
+        local = datetime.fromtimestamp(agora, ZoneInfo(cfg["fuso"]))
+    except Exception:
+        local = datetime.fromtimestamp(agora)
+    hhmm = local.strftime("%H:%M")
+    for inicio, fim in cfg["janelas"]:
+        if inicio <= hhmm <= fim:
+            return True, (inicio, fim)
+    return False, (cfg["janelas"][0][0], cfg["janelas"][-1][1])
+
+
+# ------------------------------------------------------------- checker
+IND_PADRAO = {
+    "ativar": True,
+    "exigir": ["ema9", "ema20"],   # linhas que precisam estar visíveis
+    "exigir_vwap": True,           # preço precisa estar do lado certo do VWAP
+    "bloquear_mista": True,        # stack 9/20/200 fora de ordem = sem trade
+}
+
+
+def _amp_setup(velas):
+    """Mediana das amplitudes recentes — normaliza distâncias até as linhas."""
+    amps = sorted(v["amplitude"] for v in velas[-10:])
+    return max(amps[len(amps) // 2], 1)
+
+
+def portoes_do_setup(indic, direcao, close_y, cfg_ind, amp):
+    """Regras do setup do operador. Retorna (features|None, motivo|None).
+
+    features entram no ML (só quando o setup passa nos portões);
+    motivo != None => sinal bloqueado neste fechamento.
+    """
+    cfg = {**IND_PADRAO, **(cfg_ind or {})}
+    if not cfg.get("ativar", True):
+        return None, None
+
+    exigidas = cfg.get("exigir") or []
+    ausentes = [n for n in exigidas if n not in indic.get("encontrados", [])]
+    if ausentes:
+        return None, f"linha do setup ausente: {', '.join(ausentes)}"
+
+    tend = indicadores.tendencia(indic)
+    esperada = "ALTA" if direcao == "BUY" else "BAIXA"
+    if tend != esperada:
+        if not (tend == "MISTA" and not cfg.get("bloquear_mista", True)):
+            motivo = (f"EMAs 9/20/200 sem alinhamento" if tend == "MISTA"
+                      else f"tendência {tend} contra {direcao}")
+            return None, motivo
+
+    if cfg.get("exigir_vwap", True):
+        acima = indicadores.preco_acima_vwap(indic, close_y)
+        if acima is None:
+            return None, "VWAP não encontrado no gráfico"
+        esperado_vw = direcao == "BUY"
+        if acima != esperado_vw:
+            return None, (f"preço está {'abaixo' if esperado_vw else 'acima'}"
+                          f" do VWAP")
+
+    return indicadores.gerar_features(indic, close_y, direcao, amp), None
+
+
+class SetupChecker:
+    def __init__(self):
+        self.ultimo_sinal_epoch = 0.0
+        self.ultima_faixa_hash = None
+        self.ultima_sinal_vela = 0.0    # fechamento da última vela com sinal
+        self.ultima_vela_avaliada = 0.0 # apenas informativo (última checagem)
+        self._hash_candle_ts = 0.0      # vela cuja faixa já foi validada
+        self._hash_ok = True
+        self._img_chart = None          # última captura (o juiz usa a mesma)
+
+    def avaliar_janela(self, fechamento_ts, chart_roi=None, janela_seg=None):
+        """Reavalia logo após o fechamento até a janela expirar.
+
+        A visão/IA podem precisar de 1-3s para enxergar a vela recém-fechada;
+        sem isso o setup escapava por um frame atrasado.
+        """
+        limite = time.time() + (janela_seg if janela_seg is not None
+                                else CONFIG.get("retry_apos_fechamento_seg", 6))
+        while True:
+            sinal, motivo = self.avaliar_fechamento(fechamento_ts, chart_roi)
+            if sinal or time.time() >= limite:
+                return sinal, motivo
+            time.sleep(0.5)
+
+    def avaliar_fechamento(self, fechamento_ts, chart_roi=None, force_news=False):
+        """Roda todas as regras no fechamento da vela. Devolve (sinal|None, motivo).
+
+        Não trava a vela quando algo falha: o loop de velas re-tenta por
+        alguns segundos. Só trava quando um sinal é emitido nela.
+        """
+        agora = time.time()
+        tf = int(STATE["timeframe_seg"])
+        ativo = STATE["ativo"]
+
+        # 0. um sinal por vela
+        if fechamento_ts == self.ultima_sinal_vela:
+            return None, "sinal já emitido nesta vela"
+
+        # 1. gráfico vivo? (validado 1x por vela na 1ª tentativa)
+        if CONFIG["confirmacao_grafico_vivo"] and chart_roi is not None:
+            if fechamento_ts != self._hash_candle_ts:
+                self._hash_candle_ts = fechamento_ts
+                self._hash_ok = True
+                try:
+                    self._img_chart = captura.capturar(chart_roi)
+                    faixa = captura.hash_faixa_direita(self._img_chart)
+                    if faixa and self.ultima_faixa_hash == faixa:
+                        self._hash_ok = False
+                    elif faixa:
+                        self.ultima_faixa_hash = faixa
+                except Exception as exc:
+                    STATE["erro"] = f"falha ao capturar gráfico: {exc}"
+            if not self._hash_ok:
+                return None, "gráfico parado (faixa direita sem mudança)"
+
+        # 2. visão computacional: extrai as velas
+        if self._img_chart is None and chart_roi is not None:
+            try:
+                self._img_chart = captura.capturar(chart_roi)
+            except Exception as exc:
+                return None, f"captura falhou: {exc}"
+        velas = velas_mod.extrair_velas(self._img_chart) if self._img_chart is not None else []
+        STATE["velas_reconhecidas"] = len(velas)
+        nivel_zoom, msg_zoom = velas_mod.diagnostico_zoom(velas)
+        STATE["zoom"] = {"nivel": nivel_zoom, "msg": msg_zoom}
+        if len(velas) < 5:
+            return None, f"visão reconheceu {len(velas)} velas (mín. 5) — {msg_zoom}"
+
+        # 3. direção da vela fechada (última vela completa)
+        vela_atual = velas[-1]
+        direcao = "BUY" if vela_atual["dir"] > 0 else "SELL"
+        close_y = vela_atual["fechamento_y"]
+
+        # 3b. indicadores do setup (EMAs 9/20/200 + VWAP) lidos no gráfico
+        cfg_ind = CONFIG.get("indicadores", {})
+        amp_setup = _amp_setup(velas)
+        indic = indicadores.detectar(self._img_chart, cfg_ind.get("cores"))
+        setup = {
+            "tendencia": indicadores.tendencia(indic),
+            "preco_vwap": indicadores.preco_acima_vwap(indic, close_y),
+            "linhas": indic["encontrados"],
+            "ausentes": indic["ausentes"],
+            "confianca": indic["confianca"],
+            "amplitude_px": amp_setup,
+        }
+        STATE["setup"] = setup
+        extras, motivo_setup = portoes_do_setup(indic, direcao, close_y,
+                                                cfg_ind, amp_setup)
+        if motivo_setup:
+            return None, motivo_setup
+
+        # 4. filtro matemático (ML) — features das velas + dos indicadores
+        score, feats = ml.FILTRO.pontuar(velas, direcao, extras)
+        with_estado_ml = CONFIG.get("ml", {}).get("ativar", True)
+        if not with_estado_ml:
+            score = 1.0
+        STATE["score_ml"] = None if score is None else round(score, 3)
+        if score is None:
+            return None, "ML sem features suficientes"
+        limiar = CONFIG.get("ml", {}).get("limiar", 0.60)
+        if score < limiar:
+            return None, (f"ML rejeitou ({direcao}): P={score:.2f} < {limiar:.2f}")
+
+        # 5. juiz confirmador (IA Groq) — mesma imagem p/ o veredito
+        veredito = {"ativo": False, "confirma": None, "confianca": 0,
+                    "motivo": "IA desligada na config", "modelo": "", "erro": ""}
+        cfg_ia = CONFIG.get("ia_juiz", {})
+        if cfg_ia.get("ativar", True) and juiz.juiz_ativo():
+            if self._img_chart is not None:
+                jpeg = captura.preview_jpeg(self._img_chart, max_largura=900,
+                                            qualidade=45)
+                contexto = {
+                    "ativo": ativo, "timeframe": f"{tf // 60}m" if tf % 60 == 0 else f"{tf}s",
+                    "direcao_sugerida": direcao,
+                    "score_ml": round(score, 3),
+                    "limiar_ml": limiar,
+                    "setup": {k: setup[k] for k in
+                              ("tendencia", "preco_vwap", "linhas", "confianca")},
+                    "vela_atual": {
+                        "corpo_px": vela_atual["corpo"],
+                        "amplitude_px": vela_atual["amplitude"],
+                        "decisao": round(vela_atual["corpo"] / max(vela_atual["amplitude"], 1), 2),
+                    },
+                    "velas_reconhecidas": len(velas),
+                    "features": dict(zip(ml.NOMES_FEATURES,
+                                         [round(f, 3) for f in feats])) if feats else {},
+                }
+                veredito = juiz.julgar(jpeg, contexto)
+            STATE["veredito_ia"] = veredito
+            if veredito["confirma"] is None:
+                motivo_ia = veredito["erro"] or veredito["motivo"]
+                if cfg_ia.get("exigir_confirmacao", True):
+                    return None, f"IA juiz sem veredito — sinal bloqueado ({motivo_ia})"
+                # sem exigência: segue sem confirmação, mas registra
+            elif not veredito["confirma"]:
+                return None, (f"IA rejeitou ({veredito['confianca']}%): "
+                              f"{veredito['motivo']}")
+
+        # 6. notícias de alto impacto
+        bloqueado, ev = noticias_bloqueando(agora, force=force_news)
+        if bloqueado:
+            return None, f"notícia {ev['country']} em {ev['titulo'][:40]!r}"
+
+        # 7. janela operacional
+        ok, faixa_janela = dentro_da_janela(agora)
+        if not ok:
+            return None, f"fora da janela {faixa_janela[0]}-{faixa_janela[1]}"
+
+        # 8. cooldown
+        falta = CONFIG["cooldown_seg"] - (agora - self.ultimo_sinal_epoch)
+        if falta > 0:
+            return None, f"cooldown ({falta:.0f}s restantes)"
+
+        info = (f"Fechamento {tf // 60}m • vela {direcao} • ML {score:.2f}"
+                f" • EMAs {setup['tendencia']}")
+        if setup.get("preco_vwap") is not None:
+            info += f" • preço {'acima' if setup['preco_vwap'] else 'abaixo'} VWAP"
+        if veredito.get("confirma"):
+            info += f" • IA {veredito['confianca']}%"
+        sinal = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "epoch": agora,
+            "fechamento_ts": fechamento_ts,
+            "symbol": ativo,
+            "direction": direcao,
+            "timeframe": f"{tf // 60}m" if tf % 60 == 0 else f"{tf}s",
+            "info": info,
+            "score_ml": round(score, 3),
+            "setup": {k: setup.get(k) for k in
+                      ("tendencia", "preco_vwap", "linhas", "confianca")},
+            "ia": {"confirma": veredito.get("confirma"),
+                   "confianca": veredito.get("confianca", 0),
+                   "motivo": veredito.get("motivo", ""),
+                   "modelo": veredito.get("modelo", "")},
+        }
+        sinal = adicionar_sinal(sinal)
+        self.ultimo_sinal_epoch = agora
+        self.ultima_sinal_vela = fechamento_ts
+        self.ultima_vela_avaliada = fechamento_ts
+        self._img_chart = None  # próxima vela captura de novo
+
+        # rotula o resultado para o re-treino do ML
+        if feats is not None:
+            amp_ref = sum(v["amplitude"] for v in velas[-10:]) / min(len(velas), 10)
+            ml.ACOMPANHA.registrar(feats, direcao, vela_atual["fechamento_y"],
+                                   amp_ref, fechamento_ts)
+
+        # re-treino automático quando há exemplos novos rotulados
+        if ml.ACOMPANHA.precisa_treinar():
+            ml.ACOMPANHA.registrar_treino_feito()
+            ml.FILTRO.re_treinar_async(somente_reais=True)
+
+        return sinal, f"sinal {direcao} em {ativo} (ML {score:.2f})"
+
+
+CHECKER = SetupChecker()
+</file>
+
+<file path=".gitignore">
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Sentinel (gerados localmente)
+sentinel/data/
+sentinel/roi_chart.json
+sentinel/modelo_ml.json
+sentinel/bootstrap.log
+
+# Editor/SO
+.DS_Store
+.idea/
+.vscode/
+</file>
+
+<file path="netlify.toml">
+# Configuração do Netlify — sobrescreve a config antiga salva no UI
+# (build command "npm run build", publish "dist" e functions do sistema React,
+#  que foi removido). Este site agora é estático: só uma página informativa,
+#  pois o Sentinel em si roda localmente (captura de tela + dashboard :8777).
+# Documentação: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Sem package.json / sem build de JS: só publica a pasta site/
+  command = "echo 'site estático — nada para compilar'"
+  publish = "site"
+
+[functions]
+  # Diretório existente e vazio (a função antiga do assistente foi removida)
+  directory = "netlify/functions"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+</file>
+
+<file path="sentinel/sentinel.py">
+"""LUMI SENTINEL VISION — vigia o gráfico ao vivo, detecta o fechamento de
+cada vela, filtra a oportunidade com machine learning e pede confirmação à
+IA juiz (Groq) antes de disparar alerta visual + sonoro.
+
+Execucao:  python sentinel.py      (ou duplo clique no atalho .bat)
+
+O bootstrap abaixo garante o venv antes dos imports pesados — funciona
+tanto pelo venv quanto pelo Python do sistema:
+  python sentinel/sentinel.py           # relanca no venv automaticamente
+  python sentinel/sentinel.py --check   # so diagnostica o ambiente
+"""
+import os
+import sys
+
+# ---- bootstrap ANTES de mss/PIL (auto-correção do ambiente) -------------
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  # noqa: E402
+
+if "--check" in sys.argv:
+    bootstrap.garantir_ambiente(os.path.abspath(__file__))
+    bootstrap.relatorio()
+    sys.exit(0)
+bootstrap.garantir_ambiente(os.path.abspath(__file__))
+# --------------------------------------------------------------------------
+
+import threading
+import time
+import tkinter as tk
+from tkinter import ttk
+
+import mss  # noqa: F401  (garante que o backend de captura exista cedo)
+from PIL import Image, ImageTk
+
+import captura
+import estado
+import ml
+import servidor
+import velas
+from estado import CONFIG, STATE, lock
+from setup_checker import (CHECKER, dentro_da_janela, noticias_bloqueando,
+                           proximo_fechamento, segundos_para_fechamento)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+# ----------------------------------------------------------------- áudio
+def _tocar_beep(direcao):
+    """Beep nativo do Windows. BUY sobe, SELL desce (sequência de frequências)."""
+    try:
+        import winsound
+    except ImportError:
+        return
+    frequencias = [660, 880, 1180] if direcao == "BUY" else [1180, 880, 660]
+    for f in frequencias:
+        try:
+            winsound.Beep(f, 180)
+        except Exception:
+            break
+
+
+class Alarme:
+    """Alarme sonoro de 30s em thread própria."""
+
+    def __init__(self):
+        self._parar = threading.Event()
+        self._thread = None
+
+    def disparar(self, direcao, duracao=30.0):
+        self.parar()
+        self._parar = threading.Event()
+        alvo = time.time() + duracao
+
+        def loop():
+            while not self._parar.is_set() and time.time() < alvo:
+                _tocar_beep(direcao)
+                self._parar.wait(0.6)
+
+        self._thread = threading.Thread(target=loop, daemon=True)
+        self._thread.start()
+
+    def parar(self):
+        self._parar.set()
+
+
+ALARME = Alarme()
+
+
+# ------------------------------------------------------- threads de trabalho
+def loop_captura():
+    """Mantém o preview do gráfico vivo (~1x/s) e detecta o ativo."""
+    ultimo_preview = 0.0
+    while True:
+        try:
+            roi_chart = STATE["roi_chart"]
+            if roi_chart:
+                agora = time.time()
+                if agora - ultimo_preview >= 1.0:
+                    ultimo_preview = agora
+                    import base64
+                    imgc = captura.capturar(roi_chart)
+                    jpg = captura.preview_jpeg(imgc, max_largura=960, qualidade=42)
+                    with lock():
+                        STATE["preview_chart_b64"] = base64.b64encode(jpg).decode()
+                        STATE["preview_ts"] = agora
+                        STATE["online"] = True
+                    ativo = captura.detectar_ativo_tradingview()
+                    if ativo:
+                        STATE["ativo"] = ativo
+            else:
+                with lock():
+                    STATE["online"] = False
+        except Exception as exc:
+            with lock():
+                STATE["online"] = False
+                STATE["erro"] = f"captura: {exc}"
+        time.sleep(0.5)
+
+
+def loop_velas():
+    """Aguarda cada fechamento de vela e roda o pipeline (visão+ML+IA)."""
+    while True:
+        try:
+            tf = int(STATE["timeframe_seg"])
+            fechamento = proximo_fechamento(tf)
+            espera = fechamento - time.time() + CONFIG["delay_apos_fechamento_seg"]
+            if espera > 0:
+                time.sleep(espera)
+            if not STATE["rodando"]:
+                continue
+            if not STATE["roi_chart"]:
+                with lock():
+                    STATE["ultima_checagem"] = "calibre a área do gráfico"
+                continue
+
+            with lock():
+                STATE["ultima_vela_ts"] = fechamento
+                STATE["proxima_vela_ts"] = proximo_fechamento(tf)
+
+            sinal, motivo = CHECKER.avaliar_janela(
+                fechamento, chart_roi=STATE["roi_chart"])
+            with lock():
+                STATE["ultima_checagem"] = motivo
+            if sinal:
+                ALARME.disparar(sinal["direction"])
+
+            # rotulagem de resultados p/ o re-treino do ML
+            try:
+                roi = STATE["roi_chart"]
+                if roi and ml.ACOMPANHA.pendentes:
+                    img = captura.capturar(roi)
+                    lv = velas.extrair_velas(img)
+                    if lv:
+                        ml.ACOMPANHA.atualizar(lv[-1]["fechamento_y"])
+                        if ml.ACOMPANHA.precisa_treinar():
+                            ml.ACOMPANHA.registrar_treino_feito()
+                            ml.FILTRO.re_treinar_async(somente_reais=True)
+            except Exception:
+                pass  # rotulagem é best-effort, nunca derruba o loop
+        except Exception as exc:
+            STATE["erro"] = f"loop de velas: {exc}"
+            time.sleep(2)
+        # dorme pouco para reagir a mudanças de timeframe
+        time.sleep(0.2)
+
+
+def loop_chealth():
+    """Heartbeat: sem preview recente, dashboard marca 'offline'."""
+    ultimo_ts = 0.0
+    while True:
+        time.sleep(2)
+        ts = STATE["preview_ts"]
+        with lock():
+            if STATE["roi_chart"] and ts == ultimo_ts and ts:
+                STATE["online"] = False
+            ultimo_ts = ts
+
+
+# ------------------------------------------------------------- calibrador
+class CalibradorOverlay:
+    """Overlay em tela cheia para arrastar sobre a área do gráfico."""
+
+    def __init__(self, app, monitor):
+        self.app = app
+        self.monitor = monitor
+        self.top = tk.Toplevel()
+        w, h = monitor["width"], monitor["height"]
+        self.top.overrideredirect(True)
+        self.top.geometry(f"{w}x{h}{monitor['left']:+d}{monitor['top']:+d}")
+        self.top.attributes("-alpha", 0.28)
+        self.top.attributes("-topmost", True)
+        self.top.config(cursor="cross")
+        self.top.title(f"Calibrar — Monitor {monitor['index']} (ESC cancela)")
+
+        self.canvas = tk.Canvas(self.top, cursor="cross", bg="#0284c7")
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.create_text(
+            12, 12, anchor="nw", fill="white", font=("Segoe UI", 12, "bold"),
+            text=f"MONITOR {monitor['index']} • Arraste sobre a ÁREA DO GRÁFICO "
+                 f"(só as velas, sem eixo de preços) • ESC cancela")
+
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.top.bind("<Escape>", lambda e: self.cancelar())
+        self.start_x = self.start_y = self.rel_x = self.rel_y = None
+        self.rect = None
+
+    def on_press(self, e):
+        self.start_x, self.start_y = e.x_root, e.y_root
+        self.rel_x = e.x_root - self.monitor["left"]
+        self.rel_y = e.y_root - self.monitor["top"]
+        self.rect = self.canvas.create_rectangle(
+            self.rel_x, self.rel_y, self.rel_x + 1, self.rel_y + 1,
+            outline="#f43f5e", width=3)
+
+    def on_drag(self, e):
+        rx, ry = e.x_root - self.monitor["left"], e.y_root - self.monitor["top"]
+        self.canvas.coords(self.rect, self.rel_x, self.rel_y, rx, ry)
+
+    def on_release(self, e):
+        x1, x2 = sorted((self.start_x, e.x_root))
+        y1, y2 = sorted((self.start_y, e.y_root))
+        coords = {"left": int(x1), "top": int(y1),
+                  "width": int(x2 - x1), "height": int(y2 - y1)}
+        self.top.destroy()
+        if coords["width"] > 8 and coords["height"] > 8:
+            estado.salvar_roi_chart(coords)
+            self.app.on_calibrado(coords)
+        else:
+            self.app.root.deiconify()
+
+    def cancelar(self):
+        self.top.destroy()
+        self.app.root.deiconify()
+
+
+# ------------------------------------------------------------------- GUI
+class SentinelApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Lumi Sentinel Vision • Fechamento de Vela")
+        root.geometry("520x780")
+        root.configure(bg="#070b14")
+        root.attributes("-topmost", True)
+
+        header = tk.Frame(root, bg="#0d1527", pady=12, padx=16)
+        header.pack(fill="x")
+        tk.Label(header, text="⚡ LUMI SENTINEL VISION",
+                 font=("Segoe UI", 13, "bold"), fg="#38bdf8",
+                 bg="#0d1527").pack(side="left")
+        self.lbl_status = tk.Label(header, text="🔴 PARADO",
+                                   font=("Segoe UI", 9, "bold"), fg="#f87171",
+                                   bg="#0d1527")
+        self.lbl_status.pack(side="right")
+
+        main = tk.Frame(root, bg="#070b14", padx=16, pady=10)
+        main.pack(fill="both", expand=True)
+
+        # preview do gráfico
+        tk.Label(main, text="GRÁFICO (AO VIVO)",
+                 font=("Segoe UI", 8, "bold"), fg="#94a3b8",
+                 bg="#070b14").pack(anchor="w")
+        box_chart = tk.Frame(main, bg="#020617", bd=2, relief="groove")
+        box_chart.pack(fill="x", pady=(3, 0))
+        self.lbl_img_chart = tk.Label(box_chart, bg="#020617",
+                                      text="sem calibração", fg="#64748b",
+                                      font=("Segoe UI", 9))
+        self.lbl_img_chart.pack(padx=4, pady=4)
+
+        # painel de estado
+        info = tk.Frame(main, bg="#0d1527", padx=14, pady=10)
+        info.pack(fill="x", pady=(12, 10))
+
+        linha_tf = tk.Frame(info, bg="#0d1527")
+        linha_tf.pack(fill="x")
+        tk.Label(linha_tf, text="Timeframe:", font=("Segoe UI", 9, "bold"),
+                 fg="#94a3b8", bg="#0d1527").pack(side="left")
+        self.var_tf = tk.StringVar(value=self._tf_rotulo(int(STATE["timeframe_seg"])))
+        self.combo_tf = ttk.Combobox(
+            linha_tf, textvariable=self.var_tf, state="readonly", width=10,
+            values=["1m", "3m", "5m", "15m", "30m", "1h", "4h"])
+        self.combo_tf.pack(side="left", padx=8)
+        self.combo_tf.bind("<<ComboboxSelected>>", self.on_tf_change)
+
+        self.lbl_ativo = tk.Label(linha_tf, text=f"Ativo: {STATE['ativo']}",
+                                  font=("Segoe UI", 9, "bold"), fg="#c084fc",
+                                  bg="#0d1527")
+        self.lbl_ativo.pack(side="right")
+
+        self.lbl_velas = tk.Label(info, text="Velas reconhecidas: —",
+                                  font=("Segoe UI", 9, "bold"), fg="#e2e8f0",
+                                  bg="#0d1527")
+        self.lbl_velas.pack(anchor="w", pady=(8, 0))
+
+        self.lbl_ml = tk.Label(info, text="ML (filtro matemático): —",
+                               font=("Segoe UI", 9), fg="#38bdf8",
+                               bg="#0d1527")
+        self.lbl_ml.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_setup = tk.Label(info, text="Setup (EMAs/VWAP): —",
+                                  font=("Segoe UI", 9), fg="#94a3b8",
+                                  bg="#0d1527")
+        self.lbl_setup.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_ia = tk.Label(info, text="IA juiz (Groq): —",
+                               font=("Segoe UI", 9), fg="#c084fc",
+                               bg="#0d1527")
+        self.lbl_ia.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_checagem = tk.Label(info, text="Última checagem: —",
+                                     font=("Segoe UI", 8), fg="#94a3b8",
+                                     bg="#0d1527")
+        self.lbl_checagem.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_vela = tk.Label(info, text="Próxima vela: —",
+                                 font=("Segoe UI", 8), fg="#34d399",
+                                 bg="#0d1527")
+        self.lbl_vela.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_sinal = tk.Label(info, text="Último sinal: nenhum",
+                                  font=("Segoe UI", 9, "bold"), fg="#94a3b8",
+                                  bg="#0d1527")
+        self.lbl_sinal.pack(anchor="w", pady=(6, 0))
+
+        # barra de alerta (fica verde/vermelha no sinal)
+        self.barra = tk.Label(root, text="AGUARDANDO SETUP", font=("Segoe UI", 11, "bold"),
+                              bg="#1e293b", fg="#cbd5e1", pady=8)
+        self.barra.pack(fill="x", side="bottom")
+
+        # botões
+        b1 = tk.Button(main, text="📈 1. CALIBRAR ÁREA DO GRÁFICO",
+                       font=("Segoe UI", 10, "bold"), bg="#1e293b", fg="#a78bfa",
+                       relief="flat", pady=9, cursor="hand2",
+                       command=self.calibrar)
+        b1.pack(fill="x", pady=(0, 6))
+
+        self.btn_run = tk.Button(main, text="▶️ 2. INICIAR SENTINELA",
+                                 font=("Segoe UI", 10, "bold"), bg="#10b981",
+                                 fg="#ffffff", relief="flat", pady=10,
+                                 cursor="hand2", command=self.toggle_run)
+        self.btn_run.pack(fill="x", pady=(0, 6))
+
+        self.btn_dash = tk.Button(main, text="🌐 ABRIR DASHBOARD NO NAVEGADOR",
+                                  font=("Segoe UI", 9, "bold"), bg="#0ea5e9",
+                                  fg="#ffffff", relief="flat", pady=8,
+                                  cursor="hand2", command=self.abrir_dashboard)
+        self.btn_dash.pack(fill="x")
+
+        self.lbl_erro = tk.Label(main, text="", font=("Segoe UI", 8),
+                                 fg="#f87171", bg="#070b14", wraplength=470,
+                                 justify="left")
+        self.lbl_erro.pack(anchor="w", pady=(6, 0))
+
+        # carrega o modelo ML de forma assíncrona (não trava a GUI)
+        threading.Thread(target=self._carregar_ml, daemon=True).start()
+
+        # dashboard + threads
+        porta = servidor.iniciar(int(CONFIG["porta_dashboard"]))
+        if porta:
+            self.url_dash = f"http://127.0.0.1:{porta}/"
+            self.btn_dash.config(text=f"🌐 DASHBOARD: {self.url_dash}")
+        else:
+            self.url_dash = None
+
+        for alvo in (loop_captura, loop_velas, loop_chealth):
+            threading.Thread(target=alvo, daemon=True).start()
+
+        self._repintar_previews()
+        self._atualizar_ui()
+
+    @staticmethod
+    def _carregar_ml():
+        try:
+            ml.FILTRO.carregar()
+        except Exception as exc:
+            STATE["erro"] = f"ML: {exc}"
+
+    # ------------------------------------------------------------ callbacks
+    @staticmethod
+    def _tf_rotulo(seg):
+        return {60: "1m", 180: "3m", 300: "5m", 900: "15m",
+                1800: "30m", 3600: "1h", 14400: "4h"}.get(seg, f"{seg}s")
+
+    @staticmethod
+    def _tf_seg(rotulo):
+        return {"1m": 60, "3m": 180, "5m": 300, "15m": 900,
+                "30m": 1800, "1h": 3600, "4h": 14400}.get(rotulo, 60)
+
+    def on_tf_change(self, _evt=None):
+        seg = self._tf_seg(self.var_tf.get())
+        CONFIG["timeframe_seg"] = seg
+        estado.salvar_config(CONFIG)
+        with lock():
+            STATE["timeframe_seg"] = seg
+            STATE["proxima_vela_ts"] = proximo_fechamento(seg)
+        CHECKER.ultima_vela_avaliada = 0.0  # nova timeframe => reavalia
+        CHECKER.ultima_sinal_vela = 0.0
+        CHECKER._hash_candle_ts = 0.0
+
+    def calibrar(self):
+        monitores = captura.listar_monitores()
+        if len(monitores) == 1:
+            self._abrir_overlay(monitores[0])
+        else:
+            self._escolher_monitor(monitores)
+
+    def _escolher_monitor(self, monitores):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Calibrar — monitor")
+        dlg.configure(bg="#0d1527")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.geometry("+%d+%d" % (self.root.winfo_screenwidth() // 2 - 190,
+                                 self.root.winfo_screenheight() // 2 - 110))
+        tk.Label(dlg, text="Em qual monitor está o TradingView?",
+                 font=("Segoe UI", 10, "bold"), fg="#e2e8f0",
+                 bg="#0d1527").pack(padx=20, pady=(16, 10))
+        var = tk.IntVar(value=monitores[0]["index"])
+        for m in monitores:
+            tk.Radiobutton(
+                dlg, variable=var, value=m["index"],
+                text=f"Monitor {m['index']} — {m['width']}x{m['height']} "
+                     f"(x={m['left']}, y={m['top']})",
+                font=("Segoe UI", 9), fg="#e2e8f0", bg="#0d1527",
+                selectcolor="#1e293b", activebackground="#0d1527",
+                activeforeground="#38bdf8", anchor="w").pack(fill="x", padx=20, pady=2)
+        btns = tk.Frame(dlg, bg="#0d1527")
+        btns.pack(fill="x", padx=20, pady=14)
+        tk.Button(btns, text="Cancelar", font=("Segoe UI", 9), bg="#1e293b",
+                  fg="#94a3b8", relief="flat", padx=12, pady=6,
+                  command=dlg.destroy).pack(side="left")
+        tk.Button(btns, text="Calibrar ➜", font=("Segoe UI", 9, "bold"),
+                  bg="#0284c7", fg="#ffffff", relief="flat", padx=12, pady=6,
+                  command=lambda: (
+                      dlg.destroy(),
+                      self._abrir_overlay(
+                          next(m for m in monitores if m["index"] == var.get()))
+                  )).pack(side="right")
+
+    def _abrir_overlay(self, monitor):
+        self.root.withdraw()
+        self.root.after(400, lambda: CalibradorOverlay(self, monitor))
+
+    def on_calibrado(self, coords):
+        self.root.deiconify()
+        self.lbl_erro.config(
+            text=f"ROI do gráfico salva ({coords['width']}x{coords['height']} px)",
+            fg="#34d399")
+
+    def _modal(self, titulo, mensagem, cor="#eab308"):
+        """Aviso/erro em modal interno da própria GUI.
+
+        Substitui o messagebox nativo do Windows (o operador pediu modal
+        próprio em vez da caixa de diálogo do sistema).
+        """
+        dlg = tk.Toplevel(self.root)
+        dlg.title(titulo)
+        dlg.configure(bg="#0d1527")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.geometry("+%d+%d" % (self.root.winfo_screenwidth() // 2 - 210,
+                                 self.root.winfo_screenheight() // 2 - 90))
+        tk.Label(dlg, text=titulo, font=("Segoe UI", 11, "bold"), fg=cor,
+                 bg="#0d1527").pack(padx=22, pady=(18, 6))
+        tk.Label(dlg, text=mensagem, font=("Segoe UI", 9), fg="#e2e8f0",
+                 bg="#0d1527", justify="left",
+                 wraplength=380).pack(padx=22, pady=4)
+        tk.Button(dlg, text="Entendi", font=("Segoe UI", 9, "bold"),
+                  bg="#0ea5e9", fg="#ffffff", relief="flat", activebackground="#38bdf8",
+                  activeforeground="#020617", padx=16, pady=7,
+                  command=dlg.destroy).pack(padx=22, pady=(14, 18))
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
+        dlg.focus_set()
+        return dlg
+
+    def toggle_run(self):
+        if not STATE["rodando"]:
+            if not STATE["roi_chart"]:
+                self._modal("Calibre o gráfico",
+                            "Calibre a área do gráfico primeiro — o Sentinel "
+                            "precisa saber onde olhar para seguir as velas.")
+                return
+            with lock():
+                STATE["rodando"] = True
+                STATE["proxima_vela_ts"] = proximo_fechamento(STATE["timeframe_seg"])
+            self.lbl_status.config(text="🟢 VIGIANDO TELA", fg="#34d399")
+            self.btn_run.config(text="⏸️ PAUSAR SENTINELA", bg="#eab308")
+        else:
+            with lock():
+                STATE["rodando"] = False
+            ALARME.parar()
+            self.lbl_status.config(text="🔴 PARADO", fg="#f87171")
+            self.btn_run.config(text="▶️ INICIAR SENTINELA", bg="#10b981")
+            self.barra.config(text="PAUSADO", bg="#1e293b", fg="#cbd5e1")
+
+    def abrir_dashboard(self):
+        if not self.url_dash:
+            self._modal("Dashboard",
+                        "O dashboard não subiu (porta ocupada?). Tente "
+                        "reiniciar o Sentinel.", "#f87171")
+            return
+        import webbrowser
+        webbrowser.open(self.url_dash)
+
+    # ------------------------------------------------------------- repaint
+    def _repintar_previews(self):
+        import base64
+        b64c = STATE["preview_chart_b64"]
+        if b64c:
+            try:
+                from io import BytesIO
+                img = Image.open(BytesIO(base64.b64decode(b64c)))
+                img.thumbnail((470, 260))
+                foto = ImageTk.PhotoImage(img)
+                self.lbl_img_chart.config(image=foto, text="")
+                self.lbl_img_chart.image = foto
+            except Exception:
+                pass
+        self.root.after(700, self._repintar_previews)
+
+    def _atualizar_ui(self):
+        agora = time.time()
+
+        n_velas = STATE.get("velas_reconhecidas", 0)
+        zoom = STATE.get("zoom")
+        if STATE["roi_chart"]:
+            if zoom:
+                cor_v = "#34d399" if zoom.get("nivel") == "ok" else "#eab308"
+                self.lbl_velas.config(
+                    text=f"Velas: {n_velas} • {zoom.get('msg', '')}", fg=cor_v)
+            else:
+                cor_v = "#34d399" if n_velas >= 5 else "#eab308"
+                self.lbl_velas.config(text=f"Velas reconhecidas: {n_velas}",
+                                      fg=cor_v)
+        else:
+            self.lbl_velas.config(text="Velas reconhecidas: — (calibre o gráfico)",
+                                  fg="#eab308")
+
+        score = STATE.get("score_ml")
+        limiar = CONFIG.get("ml", {}).get("limiar", 0.60)
+        if score is not None:
+            cor_ml = "#34d399" if score >= limiar else "#f87171"
+            self.lbl_ml.config(
+                text=f"ML: P(continuação) = {score:.2f} (limiar {limiar:.2f})",
+                fg=cor_ml)
+        else:
+            self.lbl_ml.config(text="ML (filtro matemático): aguardando vela",
+                               fg="#38bdf8")
+
+        # portões do setup (EMAs 9/20/200 + VWAP lidos no gráfico)
+        setup = STATE.get("setup")
+        if setup and setup.get("tendencia"):
+            linhas = "/".join(n.upper() for n in setup.get("linhas", [])) or "—"
+            acima = setup.get("preco_vwap")
+            vw = ("preço > VWAP" if acima is True else
+                  "preço < VWAP" if acima is False else "VWAP ?")
+            ausentes = setup.get("ausentes") or []
+            self.lbl_setup.config(
+                text=f"Setup: EMAs {setup['tendencia']} • {vw} • {linhas}",
+                fg="#eab308" if ausentes else "#34d399")
+        else:
+            self.lbl_setup.config(text="Setup (EMAs/VWAP): lendo o gráfico…",
+                                  fg="#94a3b8")
+
+        import juiz as juiz_mod
+        veredito = STATE.get("veredito_ia")
+        if not juiz_mod.juiz_ativo():
+            self.lbl_ia.config(
+                text="IA juiz (Groq): desligada — configure GROQ_API_KEY",
+                fg="#94a3b8")
+        elif veredito and veredito.get("confirma") is not None:
+            cor_ia = "#34d399" if veredito["confirma"] else "#f87171"
+            verbo = "CONFIRMOU" if veredito["confirma"] else "REJEITOU"
+            self.lbl_ia.config(
+                text=f"IA juiz: {verbo} ({veredito['confianca']}%) — {veredito['motivo']}",
+                fg=cor_ia)
+        else:
+            self.lbl_ia.config(text="IA juiz (Groq): pronta para julgar",
+                               fg="#c084fc")
+
+        # checagem / vela
+        self.lbl_checagem.config(text=f"Última checagem: {STATE['ultima_checagem']}")
+        if STATE["rodando"] and STATE["proxima_vela_ts"]:
+            falta = max(0, STATE["proxima_vela_ts"] - agora)
+            self.lbl_vela.config(
+                text=f"Próxima vela em {int(falta // 60)}:{int(falta % 60):02d} "
+                     f"({self._tf_rotulo(int(STATE['timeframe_seg']))})")
+        else:
+            self.lbl_vela.config(text="Próxima vela: —")
+
+        # janelas/filtros rápidos
+        if STATE["rodando"]:
+            _, ev = noticias_bloqueando(agora)
+            dentro, faixa = dentro_da_janela(agora)
+            dica = []
+            if ev:
+                dica.append(f"⛔ NOTÍCIA {ev['country']}")
+            if not dentro:
+                dica.append(f"⛔ fora da janela {faixa[0]}-{faixa[1]}")
+            if dica:
+                self.lbl_erro.config(text=" • ".join(dica), fg="#eab308")
+
+        # último sinal + barra de alerta
+        if estado.SINAIS:
+            s = estado.SINAIS[0]
+            cor = "#34d399" if s["direction"] == "BUY" else "#f87171"
+            hora = s["ts"][11:19]
+            self.lbl_sinal.config(
+                text=f"Último sinal: {s['direction']} {s['symbol']} "
+                     f"{s['timeframe']} ({hora} UTC)", fg=cor)
+        if STATE["flash_ate"] > agora and estado.SINAIS:
+            s = estado.SINAIS[0]
+            if s["direction"] == "BUY":
+                self.barra.config(text="🟢 SINAL DE COMPRA — SETUP CONFIRMADO",
+                                  bg="#065f46", fg="#ffffff")
+            else:
+                self.barra.config(text="🔴 SINAL DE VENDA — SETUP CONFIRMADO",
+                                  bg="#7f1d1d", fg="#ffffff")
+        elif STATE["rodando"]:
+            self.barra.config(text="AGUARDANDO SETUP", bg="#1e293b", fg="#cbd5e1")
+
+        if STATE["erro"]:
+            self.lbl_erro.config(text=STATE["erro"], fg="#f87171")
+            STATE["erro"] = ""
+
+        self.lbl_ativo.config(text=f"Ativo: {STATE['ativo']}")
+        if not STATE["rodando"]:
+            self.lbl_status.config(text="🔴 PARADO", fg="#f87171")
+        elif not STATE["online"]:
+            self.lbl_status.config(text="🟡 SEM SINAL DE TELA", fg="#eab308")
+
+        self.root.after(400, self._atualizar_ui)
+
+
+def main():
+    # troca o cwd para a pasta do script (ROI/config relativos)
+    os.chdir(BASE_DIR)
+    if getattr(sys, "frozen", False):
+        os.chdir(os.path.dirname(sys.executable))
+    root = tk.Tk()
+    SentinelApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="README.md">
+# Lumi Sentinel Vision
+
+Sistema de **visão computacional** que observa o gráfico do TradingView ao
+vivo, detecta o fechamento de cada vela, filtra a oportunidade com
+**machine learning** e confirma com **IA juiz (Groq)** antes de disparar
+alerta visual + sonoro (GUI local e dashboard no navegador).
+
+Não há "célula de status": a decisão vem de acompanhar o próprio gráfico
+(calibrado pela área do gráfico).
+
+## Início rápido
+
+Duplo clique em [`sentinel/INICIAR_SENTINELA.bat`](sentinel/INICIAR_SENTINELA.bat).
+
+Passo a passo completo, pipeline (visão → ML → IA), treino do modelo e
+configuração da chave Groq: [`sentinel/README.md`](sentinel/README.md).
+
+## Estrutura
+
+- `sentinel/` — todo o sistema (Python + dashboard HTML).
+- `site/` — página estática publicada no Netlify (informativa).
+- `netlify/` — configuração e functions do deploy.
+</file>
+
+</files>
