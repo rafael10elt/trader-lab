@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumi Sentinel Vision • sistema local</title>
+<meta name="description" content="Sentinel Vision: vigilância por visão computacional com alerta no fechamento de cada vela. Roda localmente na sua máquina." />
+<style>
+  :root{--bg:#070b14;--panel:#0d1527;--border:#1e293b;--blue:#38bdf8;--green:#34d399;--muted:#94a3b8;--text:#e2e8f0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.6;min-height:100vh;display:flex;flex-direction:column}
+  header{background:var(--panel);padding:16px 22px;border-bottom:1px solid var(--border)}
+  header h1{font-size:18px;color:var(--blue)}
+  main{max-width:760px;margin:0 auto;padding:40px 22px;flex:1}
+  .badge{display:inline-block;background:#1e293b;color:var(--green);font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;margin-bottom:18px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:30px 0 10px}
+  p{color:#cbd5e1;margin-bottom:10px}
+  code,pre{font-family:Consolas,'Cascadia Mono',monospace;font-size:14px}
+  code{background:#020617;border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--blue)}
+  pre{background:#020617;border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow-x:auto;color:#a5f3fc;margin-bottom:12px}
+  ol,ul{color:#cbd5e1;padding-left:22px;margin-bottom:10px}
+  li{margin-bottom:6px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:14px}
+  .destaque{border-left:3px solid var(--blue)}
+  footer{border-top:1px solid var(--border);padding:16px 22px;text-align:center;color:var(--muted);font-size:13px}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<header><h1>⚡ LUMI SENTINEL VISION</h1></header>
+<main>
+  <span class="badge">● site informativo — o sistema roda localmente</span>
+
+  <p>Este é o deploy estático do repositório. O Sentinel em si é um programa
+  <strong>Python local</strong>: ele captura a tela do TradingView, lê a célula
+  de status (compra/venda), detecta o <strong>fechamento de cada vela</strong> e,
+  se houver setup, dispara <strong>alerta visual + sonoro</strong> na janela e no
+  dashboard <code>http://127.0.0.1:8777/</code>.</p>
+
+  <div class="card destaque">
+    <p style="margin:0"><strong>Por que não é um site?</strong> O sistema precisa
+    ler a tela da <em>sua</em> máquina — isso só existe onde o TradingView está
+    aberto. Nada é enviado para a nuvem; o dashboard é servido localmente pelo
+    próprio Python.</p>
+  </div>
+
+  <h2>Como rodar</h2>
+  <ol>
+    <li>Clone o repositório e entre na pasta:</li>
+  </ol>
+  <pre>git clone &lt;seu-repo&gt; &amp;&amp; cd trader-lab</pre>
+  <ol start="2">
+    <li>Inicie (cria o venv e instala <code>mss</code> + <code>pillow</code> automaticamente):</li>
+  </ol>
+  <pre>sentinel\INICIAR_SENTINELA.bat</pre>
+  <p>Ou, no terminal / VS Code, qualquer um destes funciona — o script se
+  reabre sozinho no venv se você usar o Python do sistema:</p>
+  <pre>python sentinel\sentinel.py
+python sentinel\sentinel.py --check   # só diagnostica o ambiente</pre>
+
+  <h2>Primeira configuração (na GUI)</h2>
+  <ol>
+    <li><strong>🎯 Calibrar célula de status</strong> — arraste sobre o bloco
+        <code>● AGUARDANDO...</code> do TradingView;</li>
+    <li><strong>📈 Calibrar área do gráfico</strong> (opcional) — habilita a tela
+        ao vivo no dashboard e a confirmação de “gráfico vivo”;</li>
+    <li><strong>▶️ Iniciar sentinela</strong> e abrir o dashboard;</li>
+    <li>No dashboard, clique em <em>Ativar som do alerta</em> (libera o áudio do navegador).</li>
+  </ol>
+
+  <h2>Regras do setup</h2>
+  <p>Tudo em <code>sentinel/config.json</code>: timeframe (1m…4h), estabilidade
+  do gatilho, cooldown, filtro de notícias alto impacto USD/EUR, janela
+  operacional e confirmação de gráfico vivo. Detalhes em
+  <code>sentinel/README.md</code>.</p>
+
+  <div class="card">
+    <p style="margin:0;color:var(--muted);font-size:14px">
+    ⚠️ É um <strong>sinalizador</strong>, não um executor de ordens: ele avisa,
+    a decisão e a execução continuam com você.</p>
+  </div>
+</main>
+<footer>Lumi Sentinel Vision — visão computacional para fechamento de velas · execução local</footer>
+</body>
+</html>

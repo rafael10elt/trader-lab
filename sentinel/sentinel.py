@@ -1,10 +1,27 @@
 """LUMI SENTINEL VISION — vigia a tela, detecta o fechamento de cada vela
 e dispara alerta visual + sonoro (GUI local e dashboard no navegador).
 
-Execução:  python sentinel.py      (ou duplo clique no atalho .bat)
+Execucao:  python sentinel.py      (ou duplo clique no atalho .bat)
+
+O bootstrap abaixo garante o venv antes dos imports pesados — funciona
+tanto pelo venv quanto pelo Python do sistema:
+  python sentinel/sentinel.py           # relanca no venv automaticamente
+  python sentinel/sentinel.py --check   # so diagnostica o ambiente
 """
 import os
 import sys
+
+# ---- bootstrap ANTES de mss/PIL (auto-correção do ambiente) -------------
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  # noqa: E402
+
+if "--check" in sys.argv:
+    bootstrap.garantir_ambiente(os.path.abspath(__file__))
+    bootstrap.relatorio()
+    sys.exit(0)
+bootstrap.garantir_ambiente(os.path.abspath(__file__))
+# --------------------------------------------------------------------------
+
 import threading
 import time
 import tkinter as tk

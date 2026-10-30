@@ -1,0 +1,20 @@
+# Configuração do Netlify — sobrescreve a config antiga salva no UI
+# (build command "npm run build", publish "dist" e functions do sistema React,
+#  que foi removido). Este site agora é estático: só uma página informativa,
+#  pois o Sentinel em si roda localmente (captura de tela + dashboard :8777).
+# Documentação: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Sem package.json / sem build de JS: só publica a pasta site/
+  command = "echo 'site estático — nada para compilar'"
+  publish = "site"
+
+[functions]
+  # Diretório existente e vazio (a função antiga do assistente foi removida)
+  directory = "netlify/functions"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"

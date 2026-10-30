@@ -3,11 +3,18 @@
     python calibrador.py status
     python calibrador.py chart
 """
+import os
 import sys
-import tkinter as tk
 
-import captura
-import estado
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bootstrap  # noqa: E402
+
+bootstrap.garantir_ambiente(os.path.abspath(__file__))
+
+import tkinter as tk  # noqa: E402
+
+import captura  # noqa: E402
+import estado  # noqa: E402
 
 
 class SeletorArea:

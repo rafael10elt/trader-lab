@@ -1,0 +1,3 @@
+# Diretório de Netlify Functions (mantido vazio de propósito).
+# A função antiga do assistente Groq fazia parte do sistema React removido.
+# .gitkeep existe só para o git versionar a pasta — não é uma função.

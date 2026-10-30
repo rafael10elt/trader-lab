@@ -1,0 +1,34 @@
+{
+    "timeframe_seg": 60,
+    "delay_apos_fechamento_seg": 0.8,
+    "estavel_ha_seg": 2.0,
+    "cooldown_seg": 120,
+    "retry_apos_fechamento_seg": 6,
+    "confirmacao_grafico_vivo": true,
+    "janela_operacional": {
+        "ativar": false,
+        "fuso": "Europe/Dublin",
+        "janelas": [
+            [
+                "08:15",
+                "11:00"
+            ],
+            [
+                "18:15",
+                "20:45"
+            ]
+        ]
+    },
+    "filtro_noticias": {
+        "ativar": true,
+        "minutos_antes": 15,
+        "minutos_depois": 15,
+        "paises": [
+            "USD",
+            "EUR"
+        ],
+        "impacto": "High"
+    },
+    "porta_dashboard": 8777,
+    "som_local": true
+}
