@@ -7,10 +7,8 @@ Mesmo provedor e mesmo formato do sistema anterior:
 Recebe a captura JPEG do gráfico + as features do ML e devolve
 CONFIRMAR / REJEITAR com justificativa curta (JSON do próprio modelo).
 
-Modelos candidatos (fallback em cascata — ordem do sistema anterior):
-  meta-llama/llama-4-scout-17b-16e-instruct     (visão)
-  meta-llama/llama-4-maverick-17b-128e-instruct (visão)
-  qwen/qwen3.8-27b                              (texto — sem imagem)
+Modelo de visão e texto:
+  qwen/qwen3.8-27b
 
 Chave da API (nesta ordem de precedência):
   1. variável de ambiente GROQ_API_KEY;
@@ -35,8 +33,7 @@ URL_GROQ = "https://api.groq.com/openai/v1/chat/completions"
 URL_MODELS = "https://api.groq.com/openai/v1/models"
 CAMINHO_CHAVE = os.path.join(estado.BASE_DIR, "data", "groq_key.txt")
 MODELOS_VISAO = [
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "qwen/qwen3.8-27b",
 ]
 MODELO_TEXTO = "qwen/qwen3.8-27b"
 TIMEOUT_SEG = 45
@@ -120,7 +117,8 @@ def testar_chave(chave=None):
         return {"ok": False, "status": status, "modelo": modelo,
                 "erro": erro, "nota": ""}
 
-    # 1) autenticação + catálogo de modelos
+    # 1) autenticação + catálogo de modelos. Um 403 aqui ocorre antes de
+    # qualquer modelo ser selecionado, portanto aponta para chave/permissões.
     try:
         req = urllib.request.Request(
             URL_MODELS, headers={"Authorization": f"Bearer {chave}"})
@@ -129,7 +127,8 @@ def testar_chave(chave=None):
         ids = [m.get("id") for m in dados.get("data", [])]
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
-            return _falha("chave inválida ou sem permissão", erro=f"HTTP {exc.code}")
+            return _falha("falha de autenticação/permissão ao consultar modelos",
+                          erro=f"HTTP {exc.code} em GET /models")
         return _falha("falha ao consultar a Groq", erro=f"HTTP {exc.code}")
     except Exception as exc:
         return _falha("sem conexão com a Groq", erro=str(exc))

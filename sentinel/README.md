@@ -69,9 +69,7 @@ a chave por uma destas vias:
 - variável de ambiente `GROQ_API_KEY` (recomendado), ou
 - `config.json` → `"groq_api_key": "..."`.
 
-Modelos tentados em cascata: `llama-4-scout-17b-16e-instruct` (visão),
-`llama-4-maverick-17b-128e-instruct` (visão), `qwen3.8-27b` (texto, sem
-imagem). Sem chave, o juiz fica desligado e o pipeline segue só com o ML
+Modelo usado: `qwen/qwen3.8-27b` (texto e visão). Sem chave, o juiz fica desligado e o pipeline segue só com o ML
 (marcado no dashboard como "IA não configurada").
 
 Em `config.json`:
