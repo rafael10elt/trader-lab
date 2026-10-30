@@ -30,7 +30,37 @@
     },
     "ml": {
         "ativar": true,
-        "limiar": 0.60
+        "limiar": 0.6
+    },
+    "visao": {
+        "cores_vela": {
+            "alta": {
+                "faixas": [
+                    [50, 121],
+                    [140, 185]
+                ],
+                "min_s": 110,
+                "min_v": 70
+            },
+            "baixa": {
+                "faixas": [
+                    [0, 17],
+                    [238, 255]
+                ],
+                "min_s": 110,
+                "min_v": 70
+            }
+        }
+    },
+    "indicadores": {
+        "ativar": true,
+        "exigir": [
+            "ema9",
+            "ema20"
+        ],
+        "exigir_vwap": true,
+        "bloquear_mista": true,
+        "cores": {}
     },
     "ia_juiz": {
         "ativar": true,

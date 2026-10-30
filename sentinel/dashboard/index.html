@@ -45,10 +45,44 @@
   #flash.buy{background:radial-gradient(circle,rgba(52,211,153,.34),transparent 70%);opacity:1}
   #flash.sell{background:radial-gradient(circle,rgba(248,113,113,.34),transparent 70%);opacity:1}
   .err{color:var(--red);font-size:12px;padding:0 18px 10px}
+  /* --- checkbox do histórico + botão apagar --- */
+  input[type=checkbox]{accent-color:#38bdf8;width:15px;height:15px;cursor:pointer}
+  .danger{background:#7f1d1d;border-color:#991b1b;color:#fecaca}
+  .danger:hover{background:#991b1b}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  /* --- campo da chave Groq + toast --- */
+  .ia-key{display:flex;gap:8px;margin-top:12px}
+  .ia-key input{flex:1;min-width:0;background:#020617;border:1px solid #334155;border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:Consolas,monospace}
+  .ia-key input:focus{outline:none;border-color:#38bdf8}
+  .ia-key input::placeholder{color:#475569;font-family:'Segoe UI',sans-serif}
+  #toast{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:200;pointer-events:none}
+  .toast{background:#0d1527;border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:11px 15px;font-size:13px;color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.55);max-width:340px;animation:toastIn .25s ease;transition:opacity .3s}
+  .toast.ok{border-left-color:var(--green)}
+  .toast.erro{border-left-color:var(--red)}
+  .toast.warn{border-left-color:var(--yellow)}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+  /* --- modal de confirmação interno (substitui o diálogo do Windows) --- */
+  #modalFundo{position:fixed;inset:0;background:rgba(2,6,23,.74);display:flex;align-items:center;justify-content:center;z-index:150;backdrop-filter:blur(3px)}
+  #modalFundo.escondido{display:none}
+  #modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;width:min(410px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.7);animation:toastIn .2s ease}
+  #modal h3{font-size:16px;margin-bottom:8px;color:var(--text)}
+  #modal p{font-size:13.5px;color:var(--muted);line-height:1.55}
+  #modal .botoes{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 </style>
 </head>
 <body>
 <div id="flash"></div>
+<div id="toast"></div>
+<div id="modalFundo" class="escondido">
+  <div id="modal">
+    <h3 id="modalTitulo">Confirmar</h3>
+    <p id="modalMsg"></p>
+    <div class="botoes">
+      <button id="modalNao">Cancelar</button>
+      <button id="modalSim" class="danger">Confirmar</button>
+    </div>
+  </div>
+</div>
 
 <header>
   <h1>⚡ LUMI SENTINEL VISION</h1>
@@ -72,6 +106,7 @@
       <div class="body">
         <div id="alerta">AGUARDANDO SETUP</div>
         <div class="kv" style="margin-top:12px"><span>Velas reconhecidas</span><b id="vVelas">—</b></div>
+        <div class="kv"><span>Zoom do gráfico</span><b id="vZoom" style="font-size:12px;font-weight:600;text-align:right">—</b></div>
         <div class="kv"><span>Última checagem</span><b id="vChecagem" style="text-align:right;font-weight:500">—</b></div>
         <div class="kv"><span>Próxima vela</span><b id="vVela" style="color:var(--green)">—</b></div>
         <div class="kv"><span>Filtros</span><b id="vFiltro" style="font-weight:500">—</b></div>
@@ -84,6 +119,8 @@
         <div class="kv"><span>P(continuação)</span><b id="vScore">—</b></div>
         <div class="scorebar"><i id="scoreBar" style="width:0%"></i></div>
         <div class="kv" style="margin-top:6px"><span>Limiar</span><b id="vLimiar">—</b></div>
+        <div class="kv"><span>Setup (EMAs/VWAP)</span>
+          <b id="vSetup" style="font-size:12px;font-weight:600;text-align:right">—</b></div>
       </div>
     </div>
 
@@ -92,6 +129,13 @@
       <div class="body">
         <div class="kv"><span>Status</span><b id="vIaStatus">—</b></div>
         <div class="kv"><span>Último veredito</span><b id="vIaVeredito" style="text-align:right;font-weight:500">—</b></div>
+        <div class="ia-key">
+          <input id="inpChave" type="password" placeholder="Cole a chave Groq (gsk_…)" autocomplete="off" spellcheck="false" />
+          <button id="btnTestarIA">Testar</button>
+        </div>
+        <small style="color:#64748b;display:block;margin-top:7px;font-size:11px">
+          A chave é salva só nesta máquina (<code>data/groq_key.txt</code>, fora do git).
+        </small>
       </div>
     </div>
 
@@ -107,6 +151,8 @@
 
 <div class="controls">
   <button id="btnRecarregar">↻ Recarregar agora</button>
+  <button id="btnApagar" class="danger" disabled>🗑 Apagar selecionados</button>
+  <button id="btnApagarTudo" class="danger" disabled>🧹 Limpar histórico</button>
   <span style="color:var(--muted);font-size:12px;align-self:center" id="ultimaAtualizacao">—</span>
 </div>
 
@@ -114,8 +160,13 @@
   <h2>📋 Histórico de sinais</h2>
   <div class="body" style="padding:0">
     <table>
-      <thead><tr><th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>ML</th><th>IA</th><th>Detalhe</th></tr></thead>
-      <tbody id="tbSinais"><tr><td colspan="7" class="empty">nenhum sinal ainda</td></tr></tbody>
+      <thead><tr>
+        <th style="width:34px" title="marcar/destamar todos">
+          <input type="checkbox" id="chkTodos" />
+        </th>
+        <th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>ML</th><th>IA</th><th>Detalhe</th>
+      </tr></thead>
+      <tbody id="tbSinais"><tr><td colspan="8" class="empty">nenhum sinal ainda</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -177,20 +228,153 @@ document.getElementById('btnTeste').addEventListener('click', ()=>{
 });
 document.getElementById('btnRecarregar').addEventListener('click', ()=>poll());
 
+// ------------------------------------------------ selecionar / apagar
+const selecionados = new Set();
+let sinaisVisiveis = [];
+
+function toast(msg, tipo){
+  const box = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (tipo || '');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=>el.remove(), 400); }, 4500);
+}
+
+// modal de confirmação interno (nada de diálogo do Windows/navegador)
+let _modalResolve = null;
+function modalConfirmar(titulo, msg, rotuloSim){
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalMsg').textContent = msg;
+  document.getElementById('modalSim').textContent = rotuloSim || 'Confirmar';
+  document.getElementById('modalFundo').classList.remove('escondido');
+  return new Promise(res=>{ _modalResolve = res; });
+}
+function _fechaModal(valor){
+  document.getElementById('modalFundo').classList.add('escondido');
+  if(_modalResolve){ const r = _modalResolve; _modalResolve = null; r(valor); }
+}
+document.getElementById('modalSim').addEventListener('click', ()=>_fechaModal(true));
+document.getElementById('modalNao').addEventListener('click', ()=>_fechaModal(false));
+document.getElementById('modalFundo').addEventListener('click', e=>{
+  if(e.target.id === 'modalFundo') _fechaModal(false);
+});
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && _modalResolve) _fechaModal(false);
+});
+
+function sincronizarTodos(){
+  const chk = document.getElementById('chkTodos');
+  const n = sinaisVisiveis.length;
+  const marcados = sinaisVisiveis.filter(s=>selecionados.has(s.id)).length;
+  chk.checked = n > 0 && marcados === n;
+  chk.indeterminate = marcados > 0 && marcados < n;
+}
+function atualizarBotoes(){
+  document.getElementById('btnApagar').disabled = selecionados.size === 0;
+  document.getElementById('btnApagarTudo').disabled = sinaisVisiveis.length === 0;
+}
+
+document.getElementById('tbSinais').addEventListener('change', e=>{
+  const el = e.target;
+  if(!el.classList || !el.classList.contains('chk-sinal')) return;
+  const id = Number(el.dataset.id);
+  if(el.checked) selecionados.add(id); else selecionados.delete(id);
+  sincronizarTodos(); atualizarBotoes();
+});
+
+document.getElementById('chkTodos').addEventListener('change', e=>{
+  if(e.target.checked) sinaisVisiveis.forEach(s=>selecionados.add(s.id));
+  else selecionados.clear();
+  pintarSinais(sinaisVisiveis);
+});
+
+async function _apagar(ids, todos){
+  try{
+    const resp = await fetch('/api/sinais/apagar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(todos ? {todos: true} : {ids})});
+    const r = await resp.json();
+    if(!resp.ok || r.erro){ toast('Falha ao apagar: ' + (r.erro || resp.status), 'erro'); return; }
+    if(todos) selecionados.clear(); else ids.forEach(id=>selecionados.delete(id));
+    toast('🗑 ' + r.removidos + ' sinal(is) apagado(s) do histórico', 'ok');
+    await poll();
+  }catch(e){
+    toast('Sem conexão com o Sentinel', 'erro');
+  }
+}
+
+document.getElementById('btnApagar').addEventListener('click', async ()=>{
+  const ids = [...selecionados];
+  if(!ids.length) return;
+  const ok = await modalConfirmar('Apagar sinais',
+    `Remover ${ids.length} sinal(is) selecionado(s) do histórico? ` +
+    'O arquivo local data/signals.jsonl também é regravado.', 'Apagar');
+  if(ok) await _apagar(ids, false);
+});
+
+document.getElementById('btnApagarTudo').addEventListener('click', async ()=>{
+  if(!sinaisVisiveis.length) return;
+  const ok = await modalConfirmar('Limpar histórico',
+    `Apagar TODOS os ${sinaisVisiveis.length} sinais listados? ` +
+    'Esta ação não pode ser desfeita.', 'Apagar tudo');
+  if(ok) await _apagar([], true);
+});
+
+// ------------------------------------------------------- chave da IA (Groq)
+const inpChave = document.getElementById('inpChave');
+const btnTestarIA = document.getElementById('btnTestarIA');
+async function testarIA(){
+  const chave = inpChave.value.trim();
+  btnTestarIA.disabled = true;
+  btnTestarIA.textContent = 'Testando…';
+  try{
+    const resp = await fetch('/api/ia/testar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(chave ? {chave} : {})});
+    const r = await resp.json();
+    if(r.ok){
+      toast('✅ IA Groq ativa e respondendo' + (r.modelo ? ' — ' + r.modelo : ''), 'ok');
+      if(r.nota) toast('⚠ ' + r.nota, 'warn');
+      inpChave.value = '';
+      inpChave.placeholder = 'chave salva ✓';
+      setTimeout(()=>{ inpChave.placeholder = 'Cole a chave Groq (gsk_…)'; }, 6000);
+    }else{
+      toast('⚠ ' + (r.status || 'não foi possível validar') +
+            (r.erro ? ' — ' + r.erro : ''), r.status && r.status.indexOf('nenhuma chave') === 0 ? 'warn' : 'erro');
+    }
+  }catch(e){
+    toast('Sem conexão com o Sentinel', 'erro');
+  }
+  btnTestarIA.disabled = false;
+  btnTestarIA.textContent = 'Testar';
+  poll();
+}
+btnTestarIA.addEventListener('click', testarIA);
+inpChave.addEventListener('keydown', e=>{ if(e.key === 'Enter') testarIA(); });
+
 function fmtHora(iso){
   try{ return iso.slice(11,19); }catch(e){ return iso; }
 }
 
 function pintarSinais(sinais){
+  sinaisVisiveis = sinais || [];
   const tb = document.getElementById('tbSinais');
-  if(!sinais.length){ tb.innerHTML = '<tr><td colspan="7" class="empty">nenhum sinal ainda</td></tr>'; return; }
-  tb.innerHTML = sinais.map(s=>{
+  if(!sinaisVisiveis.length){
+    selecionados.clear();
+    tb.innerHTML = '<tr><td colspan="8" class="empty">nenhum sinal ainda</td></tr>';
+    sincronizarTodos(); atualizarBotoes();
+    return;
+  }
+  tb.innerHTML = sinaisVisiveis.map(s=>{
     const ml = (s.score_ml!=null) ? Math.round(s.score_ml*100)+'%' : '—';
     const ia = (s.ia && s.ia.confirma!=null)
       ? (s.ia.confirma ? '✔ '+s.ia.confianca+'%' : '✘ '+s.ia.confianca+'%')
       : (s.ia && s.ia.motivo ? '—' : '—');
+    const marcado = selecionados.has(s.id) ? 'checked' : '';
     return `
     <tr>
+      <td><input type="checkbox" class="chk-sinal" data-id="${s.id}" ${marcado} /></td>
       <td>${fmtHora(s.ts)}</td>
       <td>${s.symbol||'—'}</td>
       <td class="${s.direction==='BUY'?'dir-buy':'dir-sell'}">${s.direction}</td>
@@ -199,6 +383,11 @@ function pintarSinais(sinais){
       <td style="color:#c084fc">${ia}</td>
       <td style="color:#94a3b8">${s.info||''}</td>
     </tr>`;}).join('');
+  // some da seleção o que já não está na lista devolvida pelo servidor
+  const visiveis = new Set(sinaisVisiveis.map(s=>s.id));
+  [...selecionados].forEach(id=>{ if(!visiveis.has(id)) selecionados.delete(id); });
+  sincronizarTodos();
+  atualizarBotoes();
 }
 
 async function poll(){
@@ -220,6 +409,16 @@ async function poll(){
     document.getElementById('vChecagem').textContent = s.ultima_checagem || '—';
     document.getElementById('vVelas').textContent = (s.velas_reconhecidas!=null) ? s.velas_reconhecidas : '—';
 
+    // zoom da área do gráfico (orientação para o operador)
+    const vZoom = document.getElementById('vZoom');
+    if(s.zoom && s.zoom.msg){
+      vZoom.textContent = s.zoom.msg;
+      vZoom.style.color = (s.zoom.nivel === 'ok') ? 'var(--green)' : 'var(--yellow)';
+    } else {
+      vZoom.textContent = 'calibre o gráfico';
+      vZoom.style.color = 'var(--muted)';
+    }
+
     // ML
     const score = s.score_ml;
     const limiar = (s.limiar_ml!=null) ? s.limiar_ml : 0.60;
@@ -232,11 +431,26 @@ async function poll(){
       document.getElementById('scoreBar').style.width = '0%';
     }
 
+    // portões do setup (EMAs 9/20/200 + VWAP lidos no gráfico)
+    const st = s.setup;
+    const vSetup = document.getElementById('vSetup');
+    if(st && st.tendencia){
+      const linhas = (st.linhas && st.linhas.length)
+        ? st.linhas.map(n=>n.toUpperCase()).join(' · ') : 'nenhuma linha visível';
+      const vw = (st.preco_vwap===true) ? 'preço > VWAP'
+               : (st.preco_vwap===false) ? 'preço < VWAP' : 'VWAP ?';
+      vSetup.textContent = `${st.tendencia} • ${vw} • ${linhas}`;
+      vSetup.style.color = (st.ausentes && st.ausentes.length) ? 'var(--yellow)' : 'var(--green)';
+    } else {
+      vSetup.textContent = 'aguardando captura do gráfico';
+      vSetup.style.color = 'var(--muted)';
+    }
+
     // IA juiz
     const v = s.veredito_ia;
     const temChave = s.ia_ativa;
     document.getElementById('vIaStatus').textContent =
-      temChave ? 'ativa (Groq)' : 'desligada — configure GROQ_API_KEY';
+      temChave ? 'ativa (Groq)' : 'desligada — cole a chave abaixo';
     if(v && v.confirma!=null){
       document.getElementById('vIaVeredito').textContent =
         (v.confirma?'✔ CONFIRMOU':'✘ REJEITOU') + ' ('+v.confianca+'%) — '+(v.motivo||'');

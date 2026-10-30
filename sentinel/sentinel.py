@@ -26,7 +26,7 @@ bootstrap.garantir_ambiente(os.path.abspath(__file__))
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 import mss  # noqa: F401  (garante que o backend de captura exista cedo)
 from PIL import Image, ImageTk
@@ -297,6 +297,11 @@ class SentinelApp:
                                bg="#0d1527")
         self.lbl_ml.pack(anchor="w", pady=(2, 0))
 
+        self.lbl_setup = tk.Label(info, text="Setup (EMAs/VWAP): —",
+                                  font=("Segoe UI", 9), fg="#94a3b8",
+                                  bg="#0d1527")
+        self.lbl_setup.pack(anchor="w", pady=(2, 0))
+
         self.lbl_ia = tk.Label(info, text="IA juiz (Groq): —",
                                font=("Segoe UI", 9), fg="#c084fc",
                                bg="#0d1527")
@@ -442,11 +447,39 @@ class SentinelApp:
             text=f"ROI do gráfico salva ({coords['width']}x{coords['height']} px)",
             fg="#34d399")
 
+    def _modal(self, titulo, mensagem, cor="#eab308"):
+        """Aviso/erro em modal interno da própria GUI.
+
+        Substitui o messagebox nativo do Windows (o operador pediu modal
+        próprio em vez da caixa de diálogo do sistema).
+        """
+        dlg = tk.Toplevel(self.root)
+        dlg.title(titulo)
+        dlg.configure(bg="#0d1527")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.geometry("+%d+%d" % (self.root.winfo_screenwidth() // 2 - 210,
+                                 self.root.winfo_screenheight() // 2 - 90))
+        tk.Label(dlg, text=titulo, font=("Segoe UI", 11, "bold"), fg=cor,
+                 bg="#0d1527").pack(padx=22, pady=(18, 6))
+        tk.Label(dlg, text=mensagem, font=("Segoe UI", 9), fg="#e2e8f0",
+                 bg="#0d1527", justify="left",
+                 wraplength=380).pack(padx=22, pady=4)
+        tk.Button(dlg, text="Entendi", font=("Segoe UI", 9, "bold"),
+                  bg="#0ea5e9", fg="#ffffff", relief="flat", activebackground="#38bdf8",
+                  activeforeground="#020617", padx=16, pady=7,
+                  command=dlg.destroy).pack(padx=22, pady=(14, 18))
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
+        dlg.focus_set()
+        return dlg
+
     def toggle_run(self):
         if not STATE["rodando"]:
             if not STATE["roi_chart"]:
-                messagebox.showwarning("Aviso",
-                                       "Calibre a área do gráfico primeiro!")
+                self._modal("Calibre o gráfico",
+                            "Calibre a área do gráfico primeiro — o Sentinel "
+                            "precisa saber onde olhar para seguir as velas.")
                 return
             with lock():
                 STATE["rodando"] = True
@@ -463,7 +496,9 @@ class SentinelApp:
 
     def abrir_dashboard(self):
         if not self.url_dash:
-            messagebox.showerror("Erro", "Dashboard não iniciou (porta ocupada?).")
+            self._modal("Dashboard",
+                        "O dashboard não subiu (porta ocupada?). Tente "
+                        "reiniciar o Sentinel.", "#f87171")
             return
         import webbrowser
         webbrowser.open(self.url_dash)
@@ -488,9 +523,16 @@ class SentinelApp:
         agora = time.time()
 
         n_velas = STATE.get("velas_reconhecidas", 0)
+        zoom = STATE.get("zoom")
         if STATE["roi_chart"]:
-            cor_v = "#34d399" if n_velas >= 5 else "#eab308"
-            self.lbl_velas.config(text=f"Velas reconhecidas: {n_velas}", fg=cor_v)
+            if zoom:
+                cor_v = "#34d399" if zoom.get("nivel") == "ok" else "#eab308"
+                self.lbl_velas.config(
+                    text=f"Velas: {n_velas} • {zoom.get('msg', '')}", fg=cor_v)
+            else:
+                cor_v = "#34d399" if n_velas >= 5 else "#eab308"
+                self.lbl_velas.config(text=f"Velas reconhecidas: {n_velas}",
+                                      fg=cor_v)
         else:
             self.lbl_velas.config(text="Velas reconhecidas: — (calibre o gráfico)",
                                   fg="#eab308")
@@ -505,6 +547,21 @@ class SentinelApp:
         else:
             self.lbl_ml.config(text="ML (filtro matemático): aguardando vela",
                                fg="#38bdf8")
+
+        # portões do setup (EMAs 9/20/200 + VWAP lidos no gráfico)
+        setup = STATE.get("setup")
+        if setup and setup.get("tendencia"):
+            linhas = "/".join(n.upper() for n in setup.get("linhas", [])) or "—"
+            acima = setup.get("preco_vwap")
+            vw = ("preço > VWAP" if acima is True else
+                  "preço < VWAP" if acima is False else "VWAP ?")
+            ausentes = setup.get("ausentes") or []
+            self.lbl_setup.config(
+                text=f"Setup: EMAs {setup['tendencia']} • {vw} • {linhas}",
+                fg="#eab308" if ausentes else "#34d399")
+        else:
+            self.lbl_setup.config(text="Setup (EMAs/VWAP): lendo o gráfico…",
+                                  fg="#94a3b8")
 
         import juiz as juiz_mod
         veredito = STATE.get("veredito_ia")

@@ -1,8 +1,9 @@
 """Filtro de oportunidades por Machine Learning (regressão logística pura Python).
 
-Sem numpy/scikit-learn: o modelo é uma regressão logística com 10 features
-(extraídas de velas.py), padronização por média/desvio e gradiente descendente
-— tudo stdlib, para instalar leve no Python 3.14.
+Sem numpy/scikit-learn: o modelo é uma regressão logística com 14 features
+(10 da geometria das velas em velas.py + 4 dos indicadores do setup —
+EMAs 9/20/200 e VWAP — em indicadores.py), padronização por média/desvio e
+gradiente descendente — tudo stdlib, para instalar leve no Python 3.14.
 
 Três fontes de modelo:
   1. bootstrap sintético — modelo inicial treinado numa função-plausível de
@@ -26,12 +27,28 @@ import threading
 import time
 
 import velas as velas_mod
+import indicadores as ind_mod
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CAMINHO_MODELO = os.path.join(BASE_DIR, "modelo_ml.json")
 CAMINHO_TREINO = os.path.join(BASE_DIR, "data", "treino.jsonl")
 MIN_NOVOS_PARA_TREINO = 30       # exemplos novos antes do re-treino automático
 MIN_AMOSTRAS_REAIS = 60          # mínimo de reais para treinar só com reais
+
+# geometria das velas + indicadores do setup (sempre nesta ordem no vetor)
+NOMES_FEATURES = list(velas_mod.NOMES_FEATURES) + list(ind_mod.NOMES_FEATURES)
+N_FEATURES_VELAS = len(velas_mod.NOMES_FEATURES)   # 10
+N_FEATURES_IND = len(ind_mod.NOMES_FEATURES)       # 4 (EMAs/VWAP)
+N_FEATURES = N_FEATURES_VELAS + N_FEATURES_IND     # 14
+
+
+def _ajustar_dim(x):
+    """Garante N_FEATURES entradas (treino antigo gravava só as 10 da vela)."""
+    if len(x) == N_FEATURES:
+        return x
+    if len(x) > N_FEATURES:
+        return list(x[:N_FEATURES])
+    return list(x) + [0.0] * (N_FEATURES - len(x))
 
 
 # ------------------------------------------------------- modelo (LR pura)
@@ -149,11 +166,20 @@ def gerar_sinteticos(n=4000, semente=7):
         cresc = rnd.uniform(0.3, 2.5)
         dist = rnd.uniform(-2.5, 2.5)
         tend = rnd.uniform(-1, 1)
-        z = (-2.1 + 1.35 * decisao + 0.55 * corpo + 0.5 * mom + 0.4 * seq
+        # indicadores do setup (espelhados p/ a direção): alinhamento das EMAs
+        # e preço do lado certo do VWAP ajudam; EMA9 distante demais incomoda
+        stack = rnd.choice([-1.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.0])
+        vwap = rnd.uniform(-1.5, 1.5)
+        d_ema9 = rnd.uniform(-1.5, 1.5)
+        d_ema200 = rnd.uniform(-2, 2)
+        z = (-2.3 + 1.35 * decisao + 0.55 * corpo + 0.5 * mom + 0.4 * seq
              + 0.35 * pct + 0.3 * tend + 0.25 * cresc - 0.3 * mechas
-             + 0.15 * dist + rnd.gauss(0, 0.55))
+             + 0.15 * dist
+             + 0.45 * stack + 0.30 * vwap + 0.20 * d_ema9 + 0.15 * d_ema200
+             + rnd.gauss(0, 0.55))
         p = 1.0 / (1.0 + math.exp(-z))
-        X.append([corpo, amp, decisao, mechas, seq, mom, pct, cresc, dist, tend])
+        X.append([corpo, amp, decisao, mechas, seq, mom, pct, cresc, dist, tend,
+                  stack, vwap, d_ema9, d_ema200])
         y.append(1 if rnd.random() < p else 0)
     return X, y
 
@@ -170,7 +196,7 @@ def ler_treino_real(caminho=CAMINHO_TREINO):
                     continue
                 try:
                     d = json.loads(linha)
-                    X.append([float(v) for v in d["features"]])
+                    X.append(_ajustar_dim([float(v) for v in d["features"]]))
                     y.append(1 if d["label"] else 0)
                 except Exception:
                     continue
@@ -256,15 +282,18 @@ class AcompanhadorResultados:
                 else:
                     resolvidos.append((p, label))
             self.pendentes = sobras
-            for _, label in resolvidos:
-                self._gravar(label)
+            for p, label in resolvidos:
+                self._gravar(label, p.get("features"))
         return len(resolvidos)
 
-    def _gravar(self, label):
+    def _gravar(self, label, features=None):
+        reg = {"label": label, "ts": time.time()}
+        if features:
+            reg["features"] = [round(float(v), 5) for v in features]
         try:
             os.makedirs(os.path.dirname(CAMINHO_TREINO), exist_ok=True)
             with open(CAMINHO_TREINO, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"label": label, "ts": time.time()}) + "\n")
+                f.write(json.dumps(reg) + "\n")
         except Exception:
             return
         self._novos += 1
@@ -286,7 +315,8 @@ class FiltroML:
 
     def carregar(self):
         modelo = ModeloLogistico.carregar()
-        if modelo is None:
+        # modelo antigo (10 features, sem indicadores) -> re-treina na hora
+        if modelo is None or len(modelo.pesos) != N_FEATURES:
             modelo, _ = treinar(somente_reais=False, salvar=True)
         self._modelo = modelo
         return modelo
@@ -297,11 +327,17 @@ class FiltroML:
             self.carregar()
         return self._modelo
 
-    def pontuar(self, velas, direcao):
-        """(probabilidade, features ou None)."""
+    def pontuar(self, velas, direcao, extras=None):
+        """(probabilidade, features ou None).
+
+        `extras` são as features dos indicadores do setup (indicadores.py).
+        Sem elas o vetor entra com zeros — o modelo continua pontuando.
+        """
         feats = velas_mod.extrair_features(velas, direcao)
         if feats is None:
             return None, None
+        feats = list(feats) + [float(v) for v in (extras or [])]
+        feats = _ajustar_dim(feats)
         return self.modelo.probabilidade(feats), feats
 
     def re_treinar_async(self, somente_reais=False):
@@ -329,7 +365,7 @@ def _cli():
         m, acc = treinar(somente_reais=("reais" in sys.argv))
         print(f"[ML] modelo treinado | holdout {acc:.1%} | {m.meta}")
         print(f"[ML] pesos: " + ", ".join(
-            f"{n}={w:+.2f}" for n, w in zip(velas_mod.NOMES_FEATURES, m.pesos)))
+            f"{n}={w:+.2f}" for n, w in zip(NOMES_FEATURES, m.pesos)))
     else:
         m = ModeloLogistico.carregar()
         if m is None:
@@ -337,7 +373,7 @@ def _cli():
         else:
             print(f"[ML] modelo: {m.meta}")
             print("[ML] pesos: " + ", ".join(
-                f"{n}={w:+.2f}" for n, w in zip(velas_mod.NOMES_FEATURES, m.pesos)))
+                f"{n}={w:+.2f}" for n, w in zip(NOMES_FEATURES, m.pesos)))
         Xr, yr = ler_treino_real()
         print(f"[ML] exemplos reais rotulados: {len(yr)} em {CAMINHO_TREINO}")
 

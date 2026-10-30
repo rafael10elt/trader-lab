@@ -39,6 +39,21 @@ CONFIG_PADRAO = {
         "ativar": True,
         "limiar": 0.60,          # P(continuação) mínima para o sinal seguir
     },
+    # cores das velas no gráfico (a alta foi trocada de verde para azul)
+    "visao": {
+        "cores_vela": {
+            "alta":  {"faixas": [[50, 121], [140, 185]], "min_s": 110, "min_v": 70},
+            "baixa": {"faixas": [[0, 17], [238, 255]],   "min_s": 110, "min_v": 70},
+        },
+    },
+    # portões do setup do operador: EMAs 9/20/200 + VWAP lidos no gráfico
+    "indicadores": {
+        "ativar": True,            # false = ignora o setup e segue só com o ML
+        "exigir": ["ema9", "ema20"],  # linhas que precisam estar visíveis
+        "exigir_vwap": True,       # preço precisa estar do lado certo do VWAP
+        "bloquear_mista": True,    # stack 9/20/200 fora de ordem = sem trade
+        "cores": {},               # override das cores (ver indicadores.py)
+    },
     # juiz confirmador por IA (Groq). Chave: GROQ_API_KEY ou groq_api_key
     "ia_juiz": {
         "ativar": True,          # se a chave existir, o juiz participa
@@ -96,8 +111,10 @@ STATE = {
     "roi_chart": None,
     "preview_chart_b64": "",
     "preview_ts": 0.0,
-    # pipeline de decisão (ML + IA juiz)
+    # pipeline de decisão (portões do setup + ML + IA juiz)
     "velas_reconhecidas": 0,        # nº de velas detectadas na última captura
+    "zoom": None,                   # {"nivel": str, "msg": str} do diagnóstico
+    "setup": None,                  # EMAs/VWAP lidos no gráfico (indicadores)
     "score_ml": None,               # P(continuação) da última avaliação
     "veredito_ia": None,            # último veredito do juiz (dict) ou None
     "erro": "",
@@ -159,6 +176,34 @@ def set_estado_velas(n):
         STATE["velas_reconhecidas"] = int(n)
 
 
+def apagar_sinais(ids=None, todos=False):
+    """Remove sinais do histórico (memória + data/signals.jsonl).
+
+    ids: lista de ids a remover; todos=True remove tudo.
+    Retorna o nº de sinais removidos.
+    """
+    with _LOCK:
+        if todos:
+            removidos = len(SINAIS)
+            SINAIS.clear()
+        else:
+            conjunto = set(ids or [])
+            antes = len(SINAIS)
+            restantes = [s for s in SINAIS if s.get("id") not in conjunto]
+            removidos = antes - len(restantes)
+            SINAIS.clear()
+            SINAIS.extend(restantes)
+        # regrava o arquivo em ordem cronológica (mais antigo primeiro)
+        try:
+            os.makedirs(os.path.dirname(CAMINHO_SINAIS), exist_ok=True)
+            with open(CAMINHO_SINAIS, "w", encoding="utf-8") as f:
+                for s in reversed(list(SINAIS)):
+                    f.write(json.dumps(s, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            STATE["erro"] = f"falha ao regravar sinais: {exc}"
+    return removidos
+
+
 def snapshot():
     """Cópia consistente do estado para o dashboard (JSON-serializável)."""
     with _LOCK:
@@ -184,3 +229,10 @@ _carregar_sinais_historicos()
 CONFIG = carregar_config()
 STATE["timeframe_seg"] = int(CONFIG.get("timeframe_seg", 60))
 STATE["porta_dashboard"] = int(CONFIG.get("porta_dashboard", 8777))
+
+# cores das velas (azul na alta / vermelho na baixa) para a visão computacional
+try:
+    import velas as _velas
+    _velas.configurar_cores(CONFIG.get("visao", {}).get("cores_vela"))
+except Exception:  # PIL indisponível: quem precisar falha depois, com mensagem
+    pass

@@ -18,21 +18,46 @@ Pipeline:
 from PIL import Image, ImageChops
 
 # --------------------------------------------------------------- máscaras
-def _mascaras_cor(img):
-    """(vermelho, verde) como imagens L 0/255. H do Pillow: 0..255."""
-    hsv = img.convert("HSV")
-    h, s, v = hsv.split()
+# Cores das velas em H do Pillow (0..255). O operador trocou a vela de alta
+# de verde por AZUL para não brigar com a EMA9 verde; por isso o padrão
+# aceita as duas — quem usa o vermelho/verde nativo do TradingView também
+# funciona sem mexer em nada. Ajuste fino em config.json -> visao.cores_vela.
+CORES_VELA = {
+    "alta":  {"faixas": [[50, 121], [140, 185]], "min_s": 110, "min_v": 70},
+    "baixa": {"faixas": [[0, 17], [238, 255]],   "min_s": 110, "min_v": 70},
+}
+
+
+def configurar_cores(cfg_cores_vela=None):
+    """Aplica as cores de vela do config.json. Devolve o dicionário efetivo."""
+    global CORES_VELA
+    if isinstance(cfg_cores_vela, dict):
+        novo = {k: dict(v) for k, v in CORES_VELA.items()}
+        for nome, cfg in cfg_cores_vela.items():
+            if nome in novo and isinstance(cfg, dict):
+                novo[nome].update(cfg)
+        CORES_VELA = novo
+    return CORES_VELA
+
+
+def _mascara_cor(cfg, h_ch, s_ch, v_ch):
+    """Máscara L (0/255) de uma direção de vela (faixas de matiz + S/V)."""
     base = ImageChops.multiply(
-        s.point(lambda p: 255 if p >= 110 else 0),
-        v.point(lambda p: 255 if p >= 70 else 0),
-    )
-    vermelho = ImageChops.multiply(
-        ImageChops.lighter(h.point(lambda p: 255 if p <= 17 else 0),
-                           h.point(lambda p: 255 if p >= 238 else 0)),
-        base)
-    verde = ImageChops.multiply(
-        h.point(lambda p: 255 if 50 <= p <= 121 else 0), base)
-    return vermelho, verde
+        s_ch.point(lambda p, m=cfg.get("min_s", 110): 255 if p >= m else 0),
+        v_ch.point(lambda p, m=cfg.get("min_v", 70): 255 if p >= m else 0))
+    mascara = None
+    for lo, hi in (cfg.get("faixas") or [[0, 255]]):
+        parte = h_ch.point(lambda p, lo=lo, hi=hi: 255 if lo <= p <= hi else 0)
+        mascara = parte if mascara is None else ImageChops.lighter(mascara, parte)
+    return ImageChops.multiply(mascara, base)
+
+
+def _mascaras_cor(img):
+    """(máscara baixa [vermelho], máscara alta [verde/azul]) como L 0/255."""
+    hsv = img.convert("HSV")
+    h_ch, s_ch, v_ch = hsv.split()
+    return (_mascara_cor(CORES_VELA["baixa"], h_ch, s_ch, v_ch),
+            _mascara_cor(CORES_VELA["alta"], h_ch, s_ch, v_ch))
 
 
 def _contagens_coluna(mask, w, h):
@@ -90,7 +115,7 @@ def extrair_velas(img, excluir_borda_dir=0.04):
     """Detecta as velas da imagem do gráfico.
 
     Retorna lista (mais antiga -> mais recente) de dicts:
-      dir      +1 (alta, verde) / -1 (baixa, vermelha)
+      dir      +1 (alta) / -1 (baixa)
       alto, baixo, corpo_topo, corpo_base   coordenadas y (0 = topo)
       corpo, amplitude                      pixels
       largura                               pixels
@@ -101,8 +126,8 @@ def extrair_velas(img, excluir_borda_dir=0.04):
     if w < 24 or h < 24:
         return []
 
-    vermelho, verde = _mascaras_cor(img)
-    combined = ImageChops.lighter(vermelho, verde)
+    baixa, alta = _mascaras_cor(img)
+    combined = ImageChops.lighter(baixa, alta)
 
     faixa = _faixa_preco(combined, w, h)
     if faixa is None:
@@ -113,8 +138,8 @@ def extrair_velas(img, excluir_borda_dir=0.04):
     margem_dir = max(4, int(w * excluir_borda_dir))
     largura_scan = w - margem_dir
     box = (0, y0, largura_scan, y1 + 1)
-    vr = vermelho.crop(box)
-    vg = verde.crop(box)
+    vr = baixa.crop(box)
+    vg = alta.crop(box)
     cc = combined.crop(box)
     sw, sh = cc.size
 
@@ -122,7 +147,11 @@ def extrair_velas(img, excluir_borda_dir=0.04):
     cnt_vg = _contagens_coluna(vg, sw, sh)
     cnt_cc = [a + b for a, b in zip(cnt_vr, cnt_vg)]
 
-    min_col = max(2, int(sh * 0.008))
+    # Limiar de "coluna com vela": precisa ignorar as linhas horizontais do
+    # setup (EMA9 verde entra na máscara verde com 1-3 px de espessura).
+    # 1,5% da altura da faixa de preço separa corpo/mecha de vela de um traço
+    # fino sem perder candles pequenos.
+    min_col = max(3, int(sh * 0.015))
     segmentos = []
     inicio = None
     for x, c in enumerate(cnt_cc):
@@ -166,9 +195,9 @@ def extrair_velas(img, excluir_borda_dir=0.04):
             corpo_topo = corpo_base = meio
         corpo = corpo_base - corpo_topo
         amplitude = baixo - alto
-        n_verm = sum(1 for p in vr.crop(box_v).getdata() if p)
-        n_verde = sum(1 for p in vg.crop(box_v).getdata() if p)
-        dir_ = 1 if n_verde >= n_verm else -1
+        n_baixa = sum(1 for p in vr.crop(box_v).getdata() if p)
+        n_alta = sum(1 for p in vg.crop(box_v).getdata() if p)
+        dir_ = 1 if n_alta >= n_baixa else -1
         fechamento_y = corpo_topo if dir_ == 1 else corpo_base
         velas.append({
             "dir": dir_,
@@ -182,6 +211,33 @@ def extrair_velas(img, excluir_borda_dir=0.04):
             "fechamento_y": fechamento_y + y0,
         })
     return velas
+
+
+# -------------------------------------------------------- diagnóstico de zoom
+def diagnostico_zoom(velas):
+    """(nivel, mensagem) — orienta o operador sobre o zoom da área do gráfico.
+
+    nivel: "ok" | "apertado" | "distante" | "ruim"
+
+    O sistema precisa de corpo e amplitude suficientes em pixels para separar
+    vela de linha, medir o resultado em pixels e caber o EMA200 + VWAP na tela:
+    de 20 a 60 velas costuma ser o ponto ideal (ver README).
+    """
+    n = len(velas)
+    if n < 5:
+        return "ruim", "aproxime o zoom — o Sentinel precisa de pelo menos 5 velas"
+    larguras = sorted(v["largura"] for v in velas)
+    amps = sorted(v["amplitude"] for v in velas)
+    larg = larguras[len(larguras) // 2]
+    amp = amps[len(amps) // 2]
+    if n < 14:
+        return "apertado", "afaste um pouco o zoom — ideal 20 a 60 velas na tela"
+    if n > 80:
+        return "distante", "aproxime o zoom — ideal 20 a 60 velas na tela"
+    if larg < 4 or amp < 10:
+        return "distante", (f"velas miúdas (corpo {larg}px, amplitude {amp}px) "
+                            "— aproxime o zoom")
+    return "ok", f"zoom ideal — corpo {larg}px, amplitude {amp}px"
 
 
 # ------------------------------------------------------------- features

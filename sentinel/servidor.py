@@ -55,6 +55,40 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._responde(404, b'{"erro":"rota nao encontrada"}')
 
+    def do_POST(self):
+        rota = self.path.split("?", 1)[0]
+        try:
+            tamanho = int(self.headers.get("Content-Length", 0) or 0)
+            corpo = self.rfile.read(tamanho) if tamanho > 0 else b"{}"
+            dados = json.loads(corpo.decode("utf-8") or "{}")
+        except Exception:
+            self._responde(400, b'{"erro":"corpo invalido"}')
+            return
+
+        if rota == "/api/sinais/apagar":
+            try:
+                if dados.get("todos"):
+                    n = estado.apagar_sinais(todos=True)
+                else:
+                    n = estado.apagar_sinais(ids=dados.get("ids") or [])
+                resp = json.dumps({"ok": True, "removidos": int(n)})
+                self._responde(200, resp.encode("utf-8"))
+            except Exception as exc:
+                self._responde(500, json.dumps({"erro": str(exc)}).encode())
+            return
+
+        if rota == "/api/ia/testar":
+            try:
+                import juiz
+                resultado = juiz.testar_chave(dados.get("chave"))
+                self._responde(200,
+                               json.dumps(resultado, ensure_ascii=False).encode())
+            except Exception as exc:
+                self._responde(500, json.dumps({"erro": str(exc)}).encode())
+            return
+
+        self._responde(404, b'{"erro":"rota nao encontrada"}')
+
     def _arquivo(self, caminho, content_type):
         try:
             with open(caminho, "rb") as f:

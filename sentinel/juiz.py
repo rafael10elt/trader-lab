@@ -12,7 +12,11 @@ Modelos candidatos (fallback em cascata — ordem do sistema anterior):
   meta-llama/llama-4-maverick-17b-128e-instruct (visão)
   qwen/qwen3.8-27b                              (texto — sem imagem)
 
-Chave da API: variável de ambiente GROQ_API_KEY ou config.json -> "groq_api_key".
+Chave da API (nesta ordem de precedência):
+  1. variável de ambiente GROQ_API_KEY;
+  2. config.json -> "groq_api_key" (legado);
+  3. arquivo local data/groq_key.txt (salvo pela GUI/dashboard — gitignorado).
+
 Sem chave: o juiz fica desligado e o pipeline segue só com o filtro ML
 (marcado como "IA não configurada", nunca quebra o Sentinel).
 """
@@ -24,9 +28,12 @@ import threading
 import urllib.error
 import urllib.request
 
+import estado
 from estado import CONFIG
 
 URL_GROQ = "https://api.groq.com/openai/v1/chat/completions"
+URL_MODELS = "https://api.groq.com/openai/v1/models"
+CAMINHO_CHAVE = os.path.join(estado.BASE_DIR, "data", "groq_key.txt")
 MODELOS_VISAO = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
     "meta-llama/llama-4-maverick-17b-128e-instruct",
@@ -47,9 +54,122 @@ SYSTEM_PROMPT = (
 )
 
 
+_chave_arquivo = None  # cache da chave lida de data/groq_key.txt
+
+
+def _ler_chave_arquivo():
+    global _chave_arquivo
+    if _chave_arquivo is None:
+        try:
+            with open(CAMINHO_CHAVE, "r", encoding="utf-8") as f:
+                _chave_arquivo = f.read().strip()
+        except Exception:
+            _chave_arquivo = ""
+    return _chave_arquivo
+
+
 def chave_api():
-    chave = (os.environ.get("GROQ_API_KEY") or CONFIG.get("groq_api_key") or "").strip()
-    return chave or None
+    """Resolve a chave ativa: env > config (legado) > arquivo local."""
+    chave = (os.environ.get("GROQ_API_KEY") or "").strip()
+    if chave:
+        return chave
+    cfg = (CONFIG.get("groq_api_key") or "").strip()
+    if cfg:
+        return cfg
+    return _ler_chave_arquivo() or None
+
+
+def salvar_chave(chave):
+    """Salva a chave no arquivo local (gitignorado) e atualiza o cache.
+
+    A chave NÃO vai para o config.json (versionado) para não vazar no git.
+    """
+    global _chave_arquivo
+    chave = (chave or "").strip()
+    os.makedirs(os.path.dirname(CAMINHO_CHAVE), exist_ok=True)
+    with open(CAMINHO_CHAVE, "w", encoding="utf-8") as f:
+        f.write(chave)
+    _chave_arquivo = chave
+    # limpa eventual chave legada do config para evitar duplicidade/confusão
+    if CONFIG.get("groq_api_key"):
+        CONFIG["groq_api_key"] = ""
+        try:
+            estado.salvar_config(CONFIG)
+        except Exception:
+            pass
+    return chave
+
+
+def testar_chave(chave=None):
+    """Valida a chave (grava só se ela passar no teste). Não lança exceção.
+
+    Retorna {"ok": bool, "status": str, "modelo": str, "erro": str, "nota": str}.
+    Passos: consulta /models (autentica), checa modelos do juiz e faz uma
+    geração mínima para confirmar que a IA responde. Uma chave nova colada
+    pelo usuário só é gravada depois de validar — nada de arquivo cheio de
+    chave errada.
+    """
+    nova = (chave or "").strip()
+    chave = nova or chave_api()
+    if not chave:
+        return {"ok": False, "status": "nenhuma chave configurada",
+                "modelo": "", "erro": "cole a chave Groq no campo acima",
+                "nota": ""}
+
+    def _falha(status, modelo="", erro=""):
+        return {"ok": False, "status": status, "modelo": modelo,
+                "erro": erro, "nota": ""}
+
+    # 1) autenticação + catálogo de modelos
+    try:
+        req = urllib.request.Request(
+            URL_MODELS, headers={"Authorization": f"Bearer {chave}"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            dados = json.loads(resp.read().decode("utf-8"))
+        ids = [m.get("id") for m in dados.get("data", [])]
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            return _falha("chave inválida ou sem permissão", erro=f"HTTP {exc.code}")
+        return _falha("falha ao consultar a Groq", erro=f"HTTP {exc.code}")
+    except Exception as exc:
+        return _falha("sem conexão com a Groq", erro=str(exc))
+
+    # 2) algum modelo do juiz disponível?
+    disponivel = next((m for m in MODELOS_VISAO + [MODELO_TEXTO] if m in ids), None)
+    if not disponivel:
+        return {"ok": True,
+                "status": f"chave válida ({len(ids)} modelos), "
+                          "mas nenhum modelo do juiz disponível",
+                "modelo": "", "erro": "", "nota": ""}
+
+    # 3) geração mínima (confirma que a IA responde de fato)
+    try:
+        payload = {"model": disponivel, "max_tokens": 8, "temperature": 0,
+                   "messages": [{"role": "user", "content": "Responda apenas: OK"}]}
+        req = urllib.request.Request(
+            URL_GROQ, data=json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {chave}",
+                     "Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return _falha("chave válida, mas a geração falhou (crédito/quota?)",
+                      modelo=disponivel, erro=str(exc))
+
+    # 4) validou: só agora grava a chave nova
+    nota = ""
+    if nova:
+        try:
+            salvar_chave(nova)
+        except Exception as exc:
+            return _falha("não consegui salvar a chave",
+                          modelo=disponivel, erro=str(exc))
+        env = (os.environ.get("GROQ_API_KEY") or "").strip()
+        if env and env != nova:
+            nota = ("atenção: a variável GROQ_API_KEY tem prioridade "
+                    "e continua valendo no lugar desta.")
+    return {"ok": True, "status": "IA Groq ativa e respondendo",
+            "modelo": disponivel, "erro": "", "nota": nota}
 
 
 def juiz_ativo():
