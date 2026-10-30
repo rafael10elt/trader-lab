@@ -1,16 +1,15 @@
-"""Captura de tela, classificação de cor (célula de status) e hash do gráfico.
+"""Captura de tela e hash do gráfico (visão computacional, sem OpenCV).
 
-Sem OpenCV: tudo com Pillow + mss, para instalar leve e rodar no Python 3.14.
-Conversão RGB→HSV do Pillow usa H em 0..255, então os limiares do modelo
-(H de 0..180 no OpenCV) foram convertidos: 12° -> 17, 168° -> 238,
-35° -> 50, 85° -> 121.
+Tudo com Pillow + mss, para instalar leve e rodar no Python 3.14.
+A leitura das velas (cores/cores do gráfico) vive em velas.py; aqui ficam
+só captura, hash de vitalidade e preview.
 """
 import ctypes
 import hashlib
 import re
 import threading
 
-from PIL import Image, ImageChops
+from PIL import Image
 
 # Suporte a DPI do Windows (precisão pixel a pixel)
 try:
@@ -68,39 +67,6 @@ def capturar(roi):
     """Captura a ROI e devolve uma imagem Pillow RGB."""
     shot = _sct().grab(roi)
     return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-
-
-def classificar_estado(img):
-    """BUY / SELL / AGUARDANDO FVG pela predominância de vermelho vs verde.
-
-    Mesmos limiares do sistema modelo: >12% da área e 1.5x a cor oposta.
-    """
-    w, h = img.size
-    total = w * h
-    if total == 0:
-        return "AGUARDANDO FVG"
-
-    hsv = img.convert("HSV")
-    h_ch, s_ch, v_ch = hsv.split()
-
-    # máscara de saturação/valor (evita cinza/branco/preto de contorno)
-    base = ImageChops.multiply(
-        s_ch.point(lambda p: 255 if p >= 110 else 0),
-        v_ch.point(lambda p: 255 if p >= 70 else 0),
-    )
-    vermelho_faixa1 = h_ch.point(lambda p: 255 if p <= 17 else 0)
-    vermelho_faixa2 = h_ch.point(lambda p: 255 if p >= 238 else 0)
-    vermelho = ImageChops.multiply(ImageChops.lighter(vermelho_faixa1, vermelho_faixa2), base)
-    verde = ImageChops.multiply(h_ch.point(lambda p: 255 if 50 <= p <= 121 else 0), base)
-
-    pct_vermelho = vermelho.histogram()[255] / total
-    pct_verde = verde.histogram()[255] / total
-
-    if pct_vermelho > 0.12 and pct_vermelho > pct_verde * 1.5:
-        return "SELL"
-    if pct_verde > 0.12 and pct_verde > pct_vermelho * 1.5:
-        return "BUY"
-    return "AGUARDANDO FVG"
 
 
 def hash_faixa_direita(img, proporcao=0.10):

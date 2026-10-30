@@ -22,10 +22,11 @@
   .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--border)}
   .card .body{padding:14px}
   #chartImg{width:100%;border-radius:8px;background:#000;display:block;min-height:180px;object-fit:contain}
-  #statusImg{width:100%;max-width:340px;image-rendering:pixelated;border-radius:6px;background:#000;display:block;margin:0 auto}
   .kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed #172033;font-size:14px}
   .kv:last-child{border-bottom:none}
   .kv b{font-weight:600}
+  .scorebar{height:10px;border-radius:6px;background:#1e293b;overflow:hidden;margin-top:6px}
+  .scorebar i{display:block;height:100%;background:linear-gradient(90deg,#f87171,#eab308,#34d399);transition:width .3s}
   #alerta{padding:16px;text-align:center;font-size:20px;font-weight:800;letter-spacing:1px;border-radius:10px;background:#1e293b;color:var(--muted);transition:.2s}
   #alerta.buy{background:#065f46;color:#fff;animation:pulse 1s infinite}
   #alerta.sell{background:#7f1d1d;color:#fff;animation:pulse 1s infinite}
@@ -70,7 +71,7 @@
       <h2>🚨 Alerta</h2>
       <div class="body">
         <div id="alerta">AGUARDANDO SETUP</div>
-        <div class="kv" style="margin-top:12px"><span>Estado da célula</span><b id="vEstado">—</b></div>
+        <div class="kv" style="margin-top:12px"><span>Velas reconhecidas</span><b id="vVelas">—</b></div>
         <div class="kv"><span>Última checagem</span><b id="vChecagem" style="text-align:right;font-weight:500">—</b></div>
         <div class="kv"><span>Próxima vela</span><b id="vVela" style="color:var(--green)">—</b></div>
         <div class="kv"><span>Filtros</span><b id="vFiltro" style="font-weight:500">—</b></div>
@@ -78,8 +79,20 @@
     </div>
 
     <div class="card" style="margin-bottom:16px">
-      <h2>🎯 Célula de status (leitura pixel a pixel)</h2>
-      <div class="body"><img id="statusImg" alt="sem calibração" /></div>
+      <h2>🧠 Filtro matemático (ML)</h2>
+      <div class="body">
+        <div class="kv"><span>P(continuação)</span><b id="vScore">—</b></div>
+        <div class="scorebar"><i id="scoreBar" style="width:0%"></i></div>
+        <div class="kv" style="margin-top:6px"><span>Limiar</span><b id="vLimiar">—</b></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>🤖 IA juiz (Groq)</h2>
+      <div class="body">
+        <div class="kv"><span>Status</span><b id="vIaStatus">—</b></div>
+        <div class="kv"><span>Último veredito</span><b id="vIaVeredito" style="text-align:right;font-weight:500">—</b></div>
+      </div>
     </div>
 
     <div class="card">
@@ -101,8 +114,8 @@
   <h2>📋 Histórico de sinais</h2>
   <div class="body" style="padding:0">
     <table>
-      <thead><tr><th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>Detalhe</th></tr></thead>
-      <tbody id="tbSinais"><tr><td colspan="5" class="empty">nenhum sinal ainda</td></tr></tbody>
+      <thead><tr><th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>ML</th><th>IA</th><th>Detalhe</th></tr></thead>
+      <tbody id="tbSinais"><tr><td colspan="7" class="empty">nenhum sinal ainda</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -170,15 +183,22 @@ function fmtHora(iso){
 
 function pintarSinais(sinais){
   const tb = document.getElementById('tbSinais');
-  if(!sinais.length){ tb.innerHTML = '<tr><td colspan="5" class="empty">nenhum sinal ainda</td></tr>'; return; }
-  tb.innerHTML = sinais.map(s=>`
+  if(!sinais.length){ tb.innerHTML = '<tr><td colspan="7" class="empty">nenhum sinal ainda</td></tr>'; return; }
+  tb.innerHTML = sinais.map(s=>{
+    const ml = (s.score_ml!=null) ? Math.round(s.score_ml*100)+'%' : '—';
+    const ia = (s.ia && s.ia.confirma!=null)
+      ? (s.ia.confirma ? '✔ '+s.ia.confianca+'%' : '✘ '+s.ia.confianca+'%')
+      : (s.ia && s.ia.motivo ? '—' : '—');
+    return `
     <tr>
       <td>${fmtHora(s.ts)}</td>
       <td>${s.symbol||'—'}</td>
       <td class="${s.direction==='BUY'?'dir-buy':'dir-sell'}">${s.direction}</td>
       <td>${s.timeframe||'—'}</td>
+      <td>${ml}</td>
+      <td style="color:#c084fc">${ia}</td>
       <td style="color:#94a3b8">${s.info||''}</td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 }
 
 async function poll(){
@@ -197,8 +217,32 @@ async function poll(){
 
     document.getElementById('badgeAtivo').textContent = s.ativo || '—';
     document.getElementById('badgeTF').textContent = (s.timeframe_seg>=60 ? (s.timeframe_seg/60)+'m' : s.timeframe_seg+'s');
-    document.getElementById('vEstado').textContent = s.estado || '—';
     document.getElementById('vChecagem').textContent = s.ultima_checagem || '—';
+    document.getElementById('vVelas').textContent = (s.velas_reconhecidas!=null) ? s.velas_reconhecidas : '—';
+
+    // ML
+    const score = s.score_ml;
+    const limiar = (s.limiar_ml!=null) ? s.limiar_ml : 0.60;
+    document.getElementById('vLimiar').textContent = limiar.toFixed(2);
+    if(score!=null){
+      document.getElementById('vScore').textContent = (score*100).toFixed(0)+'%';
+      document.getElementById('scoreBar').style.width = Math.round(score*100)+'%';
+    } else {
+      document.getElementById('vScore').textContent = '—';
+      document.getElementById('scoreBar').style.width = '0%';
+    }
+
+    // IA juiz
+    const v = s.veredito_ia;
+    const temChave = s.ia_ativa;
+    document.getElementById('vIaStatus').textContent =
+      temChave ? 'ativa (Groq)' : 'desligada — configure GROQ_API_KEY';
+    if(v && v.confirma!=null){
+      document.getElementById('vIaVeredito').textContent =
+        (v.confirma?'✔ CONFIRMOU':'✘ REJEITOU') + ' ('+v.confianca+'%) — '+(v.motivo||'');
+    } else {
+      document.getElementById('vIaVeredito').textContent = '—';
+    }
 
     if(s.rodando && s.proxima_vela_ts){
       const falta = Math.max(0, s.proxima_vela_ts - s.agora);
@@ -209,7 +253,6 @@ async function poll(){
     }
 
     if(s.preview_chart_b64) document.getElementById('chartImg').src = 'data:image/jpeg;base64,' + s.preview_chart_b64;
-    if(s.preview_status_b64) document.getElementById('statusImg').src = 'data:image/jpeg;base64,' + s.preview_status_b64;
 
     document.getElementById('ultimaAtualizacao').textContent =
       'atualizado às ' + new Date().toLocaleTimeString();

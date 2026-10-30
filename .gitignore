@@ -7,8 +7,9 @@ venv/
 
 # Sentinel (gerados localmente)
 sentinel/data/
-sentinel/roi_status.json
 sentinel/roi_chart.json
+sentinel/modelo_ml.json
+sentinel/bootstrap.log
 
 # Editor/SO
 .DS_Store

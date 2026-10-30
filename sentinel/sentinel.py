@@ -1,5 +1,6 @@
-"""LUMI SENTINEL VISION — vigia a tela, detecta o fechamento de cada vela
-e dispara alerta visual + sonoro (GUI local e dashboard no navegador).
+"""LUMI SENTINEL VISION — vigia o gráfico ao vivo, detecta o fechamento de
+cada vela, filtra a oportunidade com machine learning e pede confirmação à
+IA juiz (Groq) antes de disparar alerta visual + sonoro.
 
 Execucao:  python sentinel.py      (ou duplo clique no atalho .bat)
 
@@ -32,7 +33,9 @@ from PIL import Image, ImageTk
 
 import captura
 import estado
+import ml
 import servidor
+import velas
 from estado import CONFIG, STATE, lock
 from setup_checker import (CHECKER, dentro_da_janela, noticias_bloqueando,
                            proximo_fechamento, segundos_para_fechamento)
@@ -56,7 +59,7 @@ def _tocar_beep(direcao):
 
 
 class Alarme:
-    """Alarme sonoro de 30s em thread própria (padrão do sistema modelo)."""
+    """Alarme sonoro de 30s em thread própria."""
 
     def __init__(self):
         self._parar = threading.Event()
@@ -84,51 +87,37 @@ ALARME = Alarme()
 
 # ------------------------------------------------------- threads de trabalho
 def loop_captura():
-    """Classifica a célula de status ~3x/s e mantém previews vivos."""
+    """Mantém o preview do gráfico vivo (~1x/s) e detecta o ativo."""
     ultimo_preview = 0.0
-    ultimo_status = 0.0
     while True:
         try:
-            roi_status = STATE["roi_status"]
             roi_chart = STATE["roi_chart"]
-            if roi_status:
-                img = captura.capturar(roi_status)
-                estado.set_estado(captura.classificar_estado(img))
+            if roi_chart:
                 agora = time.time()
-                if agora - ultimo_preview >= 0.5:
+                if agora - ultimo_preview >= 1.0:
                     ultimo_preview = agora
                     import base64
-                    jpg = captura.preview_jpeg(img, max_largura=420,
-                                               qualidade=60, escala_min=320)
-                    with lock():
-                        STATE["preview_status_b64"] = base64.b64encode(jpg).decode()
-                        STATE["preview_ts"] = agora
-                        STATE["online"] = True
-            if roi_chart and time.time() - ultimo_status >= 1.0:
-                ultimo_status = time.time()
-                import base64
-                try:
                     imgc = captura.capturar(roi_chart)
                     jpg = captura.preview_jpeg(imgc, max_largura=960, qualidade=42)
                     with lock():
                         STATE["preview_chart_b64"] = base64.b64encode(jpg).decode()
+                        STATE["preview_ts"] = agora
+                        STATE["online"] = True
                     ativo = captura.detectar_ativo_tradingview()
                     if ativo:
                         STATE["ativo"] = ativo
-                except Exception as exc:
-                    STATE["erro"] = f"captura do gráfico: {exc}"
-            if not roi_status:
+            else:
                 with lock():
                     STATE["online"] = False
         except Exception as exc:
             with lock():
                 STATE["online"] = False
                 STATE["erro"] = f"captura: {exc}"
-        time.sleep(0.25)
+        time.sleep(0.5)
 
 
 def loop_velas():
-    """Aguarda cada fechamento de vela e roda o verificador de setup."""
+    """Aguarda cada fechamento de vela e roda o pipeline (visão+ML+IA)."""
     while True:
         try:
             tf = int(STATE["timeframe_seg"])
@@ -138,9 +127,9 @@ def loop_velas():
                 time.sleep(espera)
             if not STATE["rodando"]:
                 continue
-            if not STATE["roi_status"]:
+            if not STATE["roi_chart"]:
                 with lock():
-                    STATE["ultima_checagem"] = "calibre a célula de status"
+                    STATE["ultima_checagem"] = "calibre a área do gráfico"
                 continue
 
             with lock():
@@ -153,10 +142,24 @@ def loop_velas():
                 STATE["ultima_checagem"] = motivo
             if sinal:
                 ALARME.disparar(sinal["direction"])
+
+            # rotulagem de resultados p/ o re-treino do ML
+            try:
+                roi = STATE["roi_chart"]
+                if roi and ml.ACOMPANHA.pendentes:
+                    img = captura.capturar(roi)
+                    lv = velas.extrair_velas(img)
+                    if lv:
+                        ml.ACOMPANHA.atualizar(lv[-1]["fechamento_y"])
+                        if ml.ACOMPANHA.precisa_treinar():
+                            ml.ACOMPANHA.registrar_treino_feito()
+                            ml.FILTRO.re_treinar_async(somente_reais=True)
+            except Exception:
+                pass  # rotulagem é best-effort, nunca derruba o loop
         except Exception as exc:
             STATE["erro"] = f"loop de velas: {exc}"
             time.sleep(2)
-        # dorme pouco para reagir a mudanças de timeframe/estado
+        # dorme pouco para reagir a mudanças de timeframe
         time.sleep(0.2)
 
 
@@ -167,19 +170,18 @@ def loop_chealth():
         time.sleep(2)
         ts = STATE["preview_ts"]
         with lock():
-            if STATE["roi_status"] and ts == ultimo_ts and ts:
+            if STATE["roi_chart"] and ts == ultimo_ts and ts:
                 STATE["online"] = False
             ultimo_ts = ts
 
 
 # ------------------------------------------------------------- calibrador
 class CalibradorOverlay:
-    """Overlay em tela cheia para arrastar sobre a área alvo (status ou gráfico)."""
+    """Overlay em tela cheia para arrastar sobre a área do gráfico."""
 
-    def __init__(self, app, monitor, destino):
+    def __init__(self, app, monitor):
         self.app = app
         self.monitor = monitor
-        self.destino = destino  # 'status' | 'chart'
         self.top = tk.Toplevel()
         w, h = monitor["width"], monitor["height"]
         self.top.overrideredirect(True)
@@ -191,11 +193,10 @@ class CalibradorOverlay:
 
         self.canvas = tk.Canvas(self.top, cursor="cross", bg="#0284c7")
         self.canvas.pack(fill="both", expand=True)
-        rotulo = ("CÉLULA DE STATUS" if destino == "status"
-                  else "ÁREA DO GRÁFICO (velas)")
         self.canvas.create_text(
             12, 12, anchor="nw", fill="white", font=("Segoe UI", 12, "bold"),
-            text=f"MONITOR {monitor['index']} • Arraste sobre o {rotulo} • ESC cancela")
+            text=f"MONITOR {monitor['index']} • Arraste sobre a ÁREA DO GRÁFICO "
+                 f"(só as velas, sem eixo de preços) • ESC cancela")
 
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
@@ -223,11 +224,8 @@ class CalibradorOverlay:
                   "width": int(x2 - x1), "height": int(y2 - y1)}
         self.top.destroy()
         if coords["width"] > 8 and coords["height"] > 8:
-            if self.destino == "status":
-                estado.salvar_roi_status(coords)
-            else:
-                estado.salvar_roi_chart(coords)
-            self.app.on_calibrado(self.destino, coords)
+            estado.salvar_roi_chart(coords)
+            self.app.on_calibrado(coords)
         else:
             self.app.root.deiconify()
 
@@ -241,7 +239,7 @@ class SentinelApp:
     def __init__(self, root):
         self.root = root
         root.title("Lumi Sentinel Vision • Fechamento de Vela")
-        root.geometry("520x760")
+        root.geometry("520x780")
         root.configure(bg="#070b14")
         root.attributes("-topmost", True)
 
@@ -258,31 +256,15 @@ class SentinelApp:
         main = tk.Frame(root, bg="#070b14", padx=16, pady=10)
         main.pack(fill="both", expand=True)
 
-        # previews lado a lado: célula + gráfico
-        previews = tk.Frame(main, bg="#070b14")
-        previews.pack(fill="x")
-        col_status = tk.Frame(previews, bg="#070b14")
-        col_status.pack(side="left", fill="x", expand=True)
-        tk.Label(col_status, text="CÉLULA DE STATUS",
+        # preview do gráfico
+        tk.Label(main, text="GRÁFICO (AO VIVO)",
                  font=("Segoe UI", 8, "bold"), fg="#94a3b8",
                  bg="#070b14").pack(anchor="w")
-        box_status = tk.Frame(col_status, bg="#020617", bd=2, relief="groove")
-        box_status.pack(fill="x", pady=(3, 0))
-        self.lbl_img_status = tk.Label(box_status, bg="#020617",
-                                       text="sem calibração", fg="#64748b",
-                                       font=("Segoe UI", 8))
-        self.lbl_img_status.pack(padx=4, pady=4)
-
-        col_chart = tk.Frame(previews, bg="#070b14")
-        col_chart.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        tk.Label(col_chart, text="GRÁFICO (AO VIVO)",
-                 font=("Segoe UI", 8, "bold"), fg="#94a3b8",
-                 bg="#070b14").pack(anchor="w")
-        box_chart = tk.Frame(col_chart, bg="#020617", bd=2, relief="groove")
+        box_chart = tk.Frame(main, bg="#020617", bd=2, relief="groove")
         box_chart.pack(fill="x", pady=(3, 0))
         self.lbl_img_chart = tk.Label(box_chart, bg="#020617",
                                       text="sem calibração", fg="#64748b",
-                                      font=("Segoe UI", 8))
+                                      font=("Segoe UI", 9))
         self.lbl_img_chart.pack(padx=4, pady=4)
 
         # painel de estado
@@ -305,10 +287,20 @@ class SentinelApp:
                                   bg="#0d1527")
         self.lbl_ativo.pack(side="right")
 
-        self.lbl_estado = tk.Label(info, text="Estado: Aguardando calibração...",
-                                  font=("Segoe UI", 9, "bold"), fg="#ffffff",
+        self.lbl_velas = tk.Label(info, text="Velas reconhecidas: —",
+                                  font=("Segoe UI", 9, "bold"), fg="#e2e8f0",
                                   bg="#0d1527")
-        self.lbl_estado.pack(anchor="w", pady=(8, 0))
+        self.lbl_velas.pack(anchor="w", pady=(8, 0))
+
+        self.lbl_ml = tk.Label(info, text="ML (filtro matemático): —",
+                               font=("Segoe UI", 9), fg="#38bdf8",
+                               bg="#0d1527")
+        self.lbl_ml.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_ia = tk.Label(info, text="IA juiz (Groq): —",
+                               font=("Segoe UI", 9), fg="#c084fc",
+                               bg="#0d1527")
+        self.lbl_ia.pack(anchor="w", pady=(2, 0))
 
         self.lbl_checagem = tk.Label(info, text="Última checagem: —",
                                      font=("Segoe UI", 8), fg="#94a3b8",
@@ -331,19 +323,13 @@ class SentinelApp:
         self.barra.pack(fill="x", side="bottom")
 
         # botões
-        b1 = tk.Button(main, text="🎯 1. CALIBRAR CÉLULA DE STATUS",
-                       font=("Segoe UI", 10, "bold"), bg="#1e293b", fg="#38bdf8",
-                       relief="flat", pady=9, cursor="hand2",
-                       command=lambda: self.calibrar("status"))
-        b1.pack(fill="x", pady=(0, 6))
-
-        b2 = tk.Button(main, text="📈 2. CALIBRAR ÁREA DO GRÁFICO (opcional)",
+        b1 = tk.Button(main, text="📈 1. CALIBRAR ÁREA DO GRÁFICO",
                        font=("Segoe UI", 10, "bold"), bg="#1e293b", fg="#a78bfa",
                        relief="flat", pady=9, cursor="hand2",
-                       command=lambda: self.calibrar("chart"))
-        b2.pack(fill="x", pady=(0, 6))
+                       command=self.calibrar)
+        b1.pack(fill="x", pady=(0, 6))
 
-        self.btn_run = tk.Button(main, text="▶️ 3. INICIAR SENTINELA",
+        self.btn_run = tk.Button(main, text="▶️ 2. INICIAR SENTINELA",
                                  font=("Segoe UI", 10, "bold"), bg="#10b981",
                                  fg="#ffffff", relief="flat", pady=10,
                                  cursor="hand2", command=self.toggle_run)
@@ -360,6 +346,9 @@ class SentinelApp:
                                  justify="left")
         self.lbl_erro.pack(anchor="w", pady=(6, 0))
 
+        # carrega o modelo ML de forma assíncrona (não trava a GUI)
+        threading.Thread(target=self._carregar_ml, daemon=True).start()
+
         # dashboard + threads
         porta = servidor.iniciar(int(CONFIG["porta_dashboard"]))
         if porta:
@@ -373,6 +362,13 @@ class SentinelApp:
 
         self._repintar_previews()
         self._atualizar_ui()
+
+    @staticmethod
+    def _carregar_ml():
+        try:
+            ml.FILTRO.carregar()
+        except Exception as exc:
+            STATE["erro"] = f"ML: {exc}"
 
     # ------------------------------------------------------------ callbacks
     @staticmethod
@@ -392,18 +388,18 @@ class SentinelApp:
         with lock():
             STATE["timeframe_seg"] = seg
             STATE["proxima_vela_ts"] = proximo_fechamento(seg)
-        CHECKER.ultima_vela_avaliada = 0.0  # nova timeframe => reavalia na próxima
+        CHECKER.ultima_vela_avaliada = 0.0  # nova timeframe => reavalia
         CHECKER.ultima_sinal_vela = 0.0
         CHECKER._hash_candle_ts = 0.0
 
-    def calibrar(self, destino):
+    def calibrar(self):
         monitores = captura.listar_monitores()
         if len(monitores) == 1:
-            self._abrir_overlay(monitores[0], destino)
+            self._abrir_overlay(monitores[0])
         else:
-            self._escolher_monitor(monitores, destino)
+            self._escolher_monitor(monitores)
 
-    def _escolher_monitor(self, monitores, destino):
+    def _escolher_monitor(self, monitores):
         dlg = tk.Toplevel(self.root)
         dlg.title("Calibrar — monitor")
         dlg.configure(bg="#0d1527")
@@ -433,27 +429,24 @@ class SentinelApp:
                   command=lambda: (
                       dlg.destroy(),
                       self._abrir_overlay(
-                          next(m for m in monitores if m["index"] == var.get()),
-                          destino))).pack(side="right")
+                          next(m for m in monitores if m["index"] == var.get()))
+                  )).pack(side="right")
 
-    def _abrir_overlay(self, monitor, destino):
+    def _abrir_overlay(self, monitor):
         self.root.withdraw()
-        self.root.after(400, lambda: CalibradorOverlay(self, monitor, destino))
+        self.root.after(400, lambda: CalibradorOverlay(self, monitor))
 
-    def on_calibrado(self, destino, coords):
+    def on_calibrado(self, coords):
         self.root.deiconify()
-        rotulo = "status" if destino == "status" else "gráfico"
         self.lbl_erro.config(
-            text=f"ROI do {rotulo} salva ({coords['width']}x{coords['height']} px)",
+            text=f"ROI do gráfico salva ({coords['width']}x{coords['height']} px)",
             fg="#34d399")
-        if destino == "status":
-            self.lbl_estado.config(text="Estado: calibrado — inicie a sentinela")
 
     def toggle_run(self):
         if not STATE["rodando"]:
-            if not STATE["roi_status"]:
+            if not STATE["roi_chart"]:
                 messagebox.showwarning("Aviso",
-                                       "Calibre a célula de status primeiro!")
+                                       "Calibre a área do gráfico primeiro!")
                 return
             with lock():
                 STATE["rodando"] = True
@@ -478,22 +471,12 @@ class SentinelApp:
     # ------------------------------------------------------------- repaint
     def _repintar_previews(self):
         import base64
-        b64 = STATE["preview_status_b64"]
-        if b64:
-            try:
-                from io import BytesIO
-                img = Image.open(BytesIO(base64.b64decode(b64)))
-                foto = ImageTk.PhotoImage(img)
-                self.lbl_img_status.config(image=foto, text="")
-                self.lbl_img_status.image = foto
-            except Exception:
-                pass
         b64c = STATE["preview_chart_b64"]
         if b64c:
             try:
                 from io import BytesIO
                 img = Image.open(BytesIO(base64.b64decode(b64c)))
-                img.thumbnail((230, 140))
+                img.thumbnail((470, 260))
                 foto = ImageTk.PhotoImage(img)
                 self.lbl_img_chart.config(image=foto, text="")
                 self.lbl_img_chart.image = foto
@@ -503,16 +486,41 @@ class SentinelApp:
 
     def _atualizar_ui(self):
         agora = time.time()
-        # estado + estabilidade
-        nome, estavel = estado.estado_atual()
-        if not STATE["roi_status"]:
-            self.lbl_estado.config(text="Estado: calibre a célula de status")
-        elif STATE["rodando"]:
-            cor = {"BUY": "#34d399", "SELL": "#f87171"}.get(nome, "#eab308")
-            self.lbl_estado.config(
-                text=f"Estado: {nome} há {estavel:.1f}s", fg=cor)
+
+        n_velas = STATE.get("velas_reconhecidas", 0)
+        if STATE["roi_chart"]:
+            cor_v = "#34d399" if n_velas >= 5 else "#eab308"
+            self.lbl_velas.config(text=f"Velas reconhecidas: {n_velas}", fg=cor_v)
         else:
-            self.lbl_estado.config(text=f"Estado: {nome} (pausado)", fg="#94a3b8")
+            self.lbl_velas.config(text="Velas reconhecidas: — (calibre o gráfico)",
+                                  fg="#eab308")
+
+        score = STATE.get("score_ml")
+        limiar = CONFIG.get("ml", {}).get("limiar", 0.60)
+        if score is not None:
+            cor_ml = "#34d399" if score >= limiar else "#f87171"
+            self.lbl_ml.config(
+                text=f"ML: P(continuação) = {score:.2f} (limiar {limiar:.2f})",
+                fg=cor_ml)
+        else:
+            self.lbl_ml.config(text="ML (filtro matemático): aguardando vela",
+                               fg="#38bdf8")
+
+        import juiz as juiz_mod
+        veredito = STATE.get("veredito_ia")
+        if not juiz_mod.juiz_ativo():
+            self.lbl_ia.config(
+                text="IA juiz (Groq): desligada — configure GROQ_API_KEY",
+                fg="#94a3b8")
+        elif veredito and veredito.get("confirma") is not None:
+            cor_ia = "#34d399" if veredito["confirma"] else "#f87171"
+            verbo = "CONFIRMOU" if veredito["confirma"] else "REJEITOU"
+            self.lbl_ia.config(
+                text=f"IA juiz: {verbo} ({veredito['confianca']}%) — {veredito['motivo']}",
+                fg=cor_ia)
+        else:
+            self.lbl_ia.config(text="IA juiz (Groq): pronta para julgar",
+                               fg="#c084fc")
 
         # checagem / vela
         self.lbl_checagem.config(text=f"Última checagem: {STATE['ultima_checagem']}")

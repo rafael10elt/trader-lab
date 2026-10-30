@@ -1,7 +1,6 @@
 {
     "timeframe_seg": 60,
     "delay_apos_fechamento_seg": 0.8,
-    "estavel_ha_seg": 2.0,
     "cooldown_seg": 120,
     "retry_apos_fechamento_seg": 6,
     "confirmacao_grafico_vivo": true,
@@ -29,6 +28,15 @@
         ],
         "impacto": "High"
     },
+    "ml": {
+        "ativar": true,
+        "limiar": 0.60
+    },
+    "ia_juiz": {
+        "ativar": true,
+        "exigir_confirmacao": true
+    },
+    "groq_api_key": "",
     "porta_dashboard": 8777,
     "som_local": true
 }

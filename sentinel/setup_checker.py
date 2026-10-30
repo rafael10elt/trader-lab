@@ -1,12 +1,15 @@
-"""Checagem de setup no fechamento de cada vela.
+"""Checagem de setup no fechamento de cada vela — pipeline ML + IA juiz.
 
-Regras (todas configuráveis em config.json):
+Novo fluxo (sem célula de status):
   1. o relógio dispara no fechamento da vela (epoch % timeframe == 0 + delay);
-  2. a célula de status deve estar BUY/SELL e estável há `estavel_ha_seg`;
-  3. gráfico precisa estar vivo (faixa direita mudou desde a última checagem);
-  4. bloqueio de notícias de alto impacto (calendário ForexFactory);
-  5. janela operacional opcional (fuso configurável);
-  6. cooldown entre sinais para não martelar o mesmo gatilho.
+  2. gráfico precisa estar vivo (faixa direita mudou desde a última checagem);
+  3. visão computacional extrai as velas da ROI do gráfico (velas.py);
+  4. filtro matemático (regressão logística, ml.py) pontua P(continuação)
+     na direção da última vela fechada — precisa >= `ml.limiar`;
+  5. juiz confirmador por IA (Groq, juiz.py) recebe a imagem + métricas e
+     pode rejeitar o setup mesmo com score bom;
+  6. bloqueio de notícias de alto impacto (ForexFactory) e janela operacional;
+  7. cooldown entre sinais.
 
 Retorna (sinal_dict_ou_None, motivo_str).
 """
@@ -15,9 +18,11 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-import estado as estado_mod
 from estado import CONFIG, STATE, adicionar_sinal
 import captura
+import juiz
+import ml
+import velas as velas_mod
 
 CACHE_NOTICIAS_SEG = 300  # 5 min
 _cache_noticias = {"ts": 0.0, "lista": []}
@@ -114,15 +119,16 @@ class SetupChecker:
         self.ultima_vela_avaliada = 0.0 # apenas informativo (última checagem)
         self._hash_candle_ts = 0.0      # vela cuja faixa já foi validada
         self._hash_ok = True
+        self._img_chart = None          # última captura (o juiz usa a mesma)
 
     def avaliar_janela(self, fechamento_ts, chart_roi=None, janela_seg=None):
         """Reavalia logo após o fechamento até a janela expirar.
 
-        O gatilho pode estabilizar 1-3s depois da virada; sem isso o setup
-        escapava quando a célula mudou junto com a vela.
+        A visão/IA podem precisar de 1-3s para enxergar a vela recém-fechada;
+        sem isso o setup escapava por um frame atrasado.
         """
         limite = time.time() + (janela_seg if janela_seg is not None
-                                else CONFIG["retry_apos_fechamento_seg"])
+                                else CONFIG.get("retry_apos_fechamento_seg", 6))
         while True:
             sinal, motivo = self.avaliar_fechamento(fechamento_ts, chart_roi)
             if sinal or time.time() >= limite:
@@ -132,77 +138,144 @@ class SetupChecker:
     def avaliar_fechamento(self, fechamento_ts, chart_roi=None, force_news=False):
         """Roda todas as regras no fechamento da vela. Devolve (sinal|None, motivo).
 
-        Não marca a vela como 'avaliada' quando algo falha: o loop de velas
-        re-tenta por alguns segundos (o gatilho pode estabilizar logo após a
-        virada). Só trava a vela quando um sinal é emitido nela.
+        Não trava a vela quando algo falha: o loop de velas re-tenta por
+        alguns segundos. Só trava quando um sinal é emitido nela.
         """
         agora = time.time()
         tf = int(STATE["timeframe_seg"])
         ativo = STATE["ativo"]
 
-        # 0. um sinal por vela (cooldown cobre o caso normal; este é o trava
-        #    explícita para configs com cooldown baixo)
+        # 0. um sinal por vela
         if fechamento_ts == self.ultima_sinal_vela:
             return None, "sinal já emitido nesta vela"
 
-        # 1. estado da célula de status
-        estado, estavel_ha = estado_mod.estado_atual()
-        if estado not in ("BUY", "SELL"):
-            return None, f"célula em '{estado}' — sem gatilho"
-
-        # 2. gatilho estável?
-        if estavel_ha < CONFIG["estavel_ha_seg"]:
-            return None, f"gatilho instável ({estavel_ha:.1f}s < {CONFIG['estavel_ha_seg']}s)"
-
-        # 3. gráfico vivo? (validado 1x por vela na 1ª tentativa; tentativas
-        #    seguintes reaproveitam o veredito — rehash em 0,5s seria ruído)
+        # 1. gráfico vivo? (validado 1x por vela na 1ª tentativa)
         if CONFIG["confirmacao_grafico_vivo"] and chart_roi is not None:
             if fechamento_ts != self._hash_candle_ts:
                 self._hash_candle_ts = fechamento_ts
                 self._hash_ok = True
                 try:
-                    faixa = captura.hash_faixa_direita(captura.capturar(chart_roi))
+                    self._img_chart = captura.capturar(chart_roi)
+                    faixa = captura.hash_faixa_direita(self._img_chart)
                     if faixa and self.ultima_faixa_hash == faixa:
                         self._hash_ok = False
                     elif faixa:
                         self.ultima_faixa_hash = faixa
                 except Exception as exc:
-                    # falha de captura não condena o gráfico (só registra)
                     STATE["erro"] = f"falha ao capturar gráfico: {exc}"
             if not self._hash_ok:
                 return None, "gráfico parado (faixa direita sem mudança)"
 
-        # 4. notícias de alto impacto
+        # 2. visão computacional: extrai as velas
+        if self._img_chart is None and chart_roi is not None:
+            try:
+                self._img_chart = captura.capturar(chart_roi)
+            except Exception as exc:
+                return None, f"captura falhou: {exc}"
+        velas = velas_mod.extrair_velas(self._img_chart) if self._img_chart is not None else []
+        STATE["velas_reconhecidas"] = len(velas)
+        if len(velas) < 5:
+            return None, f"visão reconheceu {len(velas)} velas (mín. 5) — calibre/ajuste o zoom da área do gráfico"
+
+        # 3. direção da vela fechada (última vela completa)
+        vela_atual = velas[-1]
+        direcao = "BUY" if vela_atual["dir"] > 0 else "SELL"
+
+        # 4. filtro matemático (ML)
+        score, feats = ml.FILTRO.pontuar(velas, direcao)
+        with_estado_ml = CONFIG.get("ml", {}).get("ativar", True)
+        if not with_estado_ml:
+            score = 1.0
+        STATE["score_ml"] = None if score is None else round(score, 3)
+        if score is None:
+            return None, "ML sem features suficientes"
+        limiar = CONFIG.get("ml", {}).get("limiar", 0.60)
+        if score < limiar:
+            return None, (f"ML rejeitou ({direcao}): P={score:.2f} < {limiar:.2f}")
+
+        # 5. juiz confirmador (IA Groq) — mesma imagem p/ o veredito
+        veredito = {"ativo": False, "confirma": None, "confianca": 0,
+                    "motivo": "IA desligada na config", "modelo": "", "erro": ""}
+        cfg_ia = CONFIG.get("ia_juiz", {})
+        if cfg_ia.get("ativar", True) and juiz.juiz_ativo():
+            if self._img_chart is not None:
+                jpeg = captura.preview_jpeg(self._img_chart, max_largura=900,
+                                            qualidade=45)
+                contexto = {
+                    "ativo": ativo, "timeframe": f"{tf // 60}m" if tf % 60 == 0 else f"{tf}s",
+                    "direcao_sugerida": direcao,
+                    "score_ml": round(score, 3),
+                    "limiar_ml": limiar,
+                    "vela_atual": {
+                        "corpo_px": vela_atual["corpo"],
+                        "amplitude_px": vela_atual["amplitude"],
+                        "decisao": round(vela_atual["corpo"] / max(vela_atual["amplitude"], 1), 2),
+                    },
+                    "velas_reconhecidas": len(velas),
+                    "features": dict(zip(velas_mod.NOMES_FEATURES,
+                                         [round(f, 3) for f in feats])) if feats else {},
+                }
+                veredito = juiz.julgar(jpeg, contexto)
+            STATE["veredito_ia"] = veredito
+            if veredito["confirma"] is None:
+                motivo_ia = veredito["erro"] or veredito["motivo"]
+                if cfg_ia.get("exigir_confirmacao", True):
+                    return None, f"IA juiz sem veredito — sinal bloqueado ({motivo_ia})"
+                # sem exigência: segue sem confirmação, mas registra
+            elif not veredito["confirma"]:
+                return None, (f"IA rejeitou ({veredito['confianca']}%): "
+                              f"{veredito['motivo']}")
+
+        # 6. notícias de alto impacto
         bloqueado, ev = noticias_bloqueando(agora, force=force_news)
         if bloqueado:
             return None, f"notícia {ev['country']} em {ev['titulo'][:40]!r}"
 
-        # 5. janela operacional
+        # 7. janela operacional
         ok, faixa_janela = dentro_da_janela(agora)
         if not ok:
             return None, f"fora da janela {faixa_janela[0]}-{faixa_janela[1]}"
 
-        # 6. cooldown
+        # 8. cooldown
         falta = CONFIG["cooldown_seg"] - (agora - self.ultimo_sinal_epoch)
         if falta > 0:
             return None, f"cooldown ({falta:.0f}s restantes)"
 
+        info = (f"Fechamento {tf // 60}m • vela {direcao} • ML {score:.2f}")
+        if veredito.get("confirma"):
+            info += f" • IA {veredito['confianca']}%"
         sinal = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "epoch": agora,
             "fechamento_ts": fechamento_ts,
             "symbol": ativo,
-            "direction": estado,
+            "direction": direcao,
             "timeframe": f"{tf // 60}m" if tf % 60 == 0 else f"{tf}s",
-            "info": f"Fechamento de vela {tf // 60}m — gatilho {estado} estável "
-                    f"{estavel_ha:.1f}s",
-            "estavel_ha": round(estavel_ha, 1),
+            "info": info,
+            "score_ml": round(score, 3),
+            "ia": {"confirma": veredito.get("confirma"),
+                   "confianca": veredito.get("confianca", 0),
+                   "motivo": veredito.get("motivo", ""),
+                   "modelo": veredito.get("modelo", "")},
         }
         sinal = adicionar_sinal(sinal)
         self.ultimo_sinal_epoch = agora
         self.ultima_sinal_vela = fechamento_ts
         self.ultima_vela_avaliada = fechamento_ts
-        return sinal, f"sinal {estado} em {ativo}"
+        self._img_chart = None  # próxima vela captura de novo
+
+        # rotula o resultado para o re-treino do ML
+        if feats is not None:
+            amp_ref = sum(v["amplitude"] for v in velas[-10:]) / min(len(velas), 10)
+            ml.ACOMPANHA.registrar(feats, direcao, vela_atual["fechamento_y"],
+                                   amp_ref, fechamento_ts)
+
+        # re-treino automático quando há exemplos novos rotulados
+        if ml.ACOMPANHA.precisa_treinar():
+            ml.ACOMPANHA.registrar_treino_feito()
+            ml.FILTRO.re_treinar_async(somente_reais=True)
+
+        return sinal, f"sinal {direcao} em {ativo} (ML {score:.2f})"
 
 
 CHECKER = SetupChecker()

@@ -32,15 +32,18 @@
   <span class="badge">● site informativo — o sistema roda localmente</span>
 
   <p>Este é o deploy estático do repositório. O Sentinel em si é um programa
-  <strong>Python local</strong>: ele captura a tela do TradingView, lê a célula
-  de status (compra/venda), detecta o <strong>fechamento de cada vela</strong> e,
+  <strong>Python local</strong>: ele captura a tela do TradingView, lê o
+  <strong>gráfico ao vivo</strong> (visão computacional), detecta o
+  <strong>fechamento de cada vela</strong>, filtra a oportunidade com
+  <strong>machine learning</strong>, confirma com a <strong>IA juiz (Groq)</strong> e,
   se houver setup, dispara <strong>alerta visual + sonoro</strong> na janela e no
   dashboard <code>http://127.0.0.1:8777/</code>.</p>
 
   <div class="card destaque">
     <p style="margin:0"><strong>Por que não é um site?</strong> O sistema precisa
     ler a tela da <em>sua</em> máquina — isso só existe onde o TradingView está
-    aberto. Nada é enviado para a nuvem; o dashboard é servido localmente pelo
+    aberto. Nada é enviado para a nuvem (exceto a imagem que você autoriza enviar
+    à IA juiz da Groq para confirmação); o dashboard é servido localmente pelo
     próprio Python.</p>
   </div>
 
@@ -60,18 +63,37 @@ python sentinel\sentinel.py --check   # só diagnostica o ambiente</pre>
 
   <h2>Primeira configuração (na GUI)</h2>
   <ol>
-    <li><strong>🎯 Calibrar célula de status</strong> — arraste sobre o bloco
-        <code>● AGUARDANDO...</code> do TradingView;</li>
-    <li><strong>📈 Calibrar área do gráfico</strong> (opcional) — habilita a tela
-        ao vivo no dashboard e a confirmação de “gráfico vivo”;</li>
+    <li><strong>📈 Calibrar área do gráfico</strong> — arraste sobre as velas
+        (sem o eixo de preços). É a única calibração;</li>
     <li><strong>▶️ Iniciar sentinela</strong> e abrir o dashboard;</li>
     <li>No dashboard, clique em <em>Ativar som do alerta</em> (libera o áudio do navegador).</li>
   </ol>
 
+  <h2>Pipeline de decisão (a cada vela)</h2>
+  <ol>
+    <li><strong>Visão computacional</strong> extrai corpo/mechas/direção das velas;</li>
+    <li><strong>Filtro ML</strong> (regressão logística) pontua a chance de
+        continuação — só passa acima do limiar (0.60);</li>
+    <li><strong>IA juiz (Groq)</strong> recebe a imagem + métricas e confirma ou
+        rejeita o setup;</li>
+    <li>Filtros de notícias, janela operacional e cooldown.</li>
+  </ol>
+
+  <h2>Machine learning que aprende sozinho</h2>
+  <p>Cada sinal emitido é acompanhado: o Sentinel mede se o preço andou a favor
+  ou contra e grava o resultado em <code>data/treino.jsonl</code>. Quando
+  acumulam ≥30 exemplos novos, o modelo <strong>re-treina automaticamente</strong>.
+  Comandos: <code>ml.py status</code> e <code>ml.py treinar</code>.</p>
+
+  <h2>IA juiz (Groq)</h2>
+  <p>Configure a chave <code>GROQ_API_KEY</code> (variável de ambiente ou
+  <code>config.json</code>) e a IA passa a confirmar cada setup visualmente.
+  Sem chave, o pipeline segue só com o ML.</p>
+
   <h2>Regras do setup</h2>
-  <p>Tudo em <code>sentinel/config.json</code>: timeframe (1m…4h), estabilidade
-  do gatilho, cooldown, filtro de notícias alto impacto USD/EUR, janela
-  operacional e confirmação de gráfico vivo. Detalhes em
+  <p>Tudo em <code>sentinel/config.json</code>: timeframe (1m…4h), limiar do ML,
+  exigência de confirmação da IA, cooldown, filtro de notícias alto impacto
+  USD/EUR, janela operacional e confirmação de gráfico vivo. Detalhes em
   <code>sentinel/README.md</code>.</p>
 
   <div class="card">

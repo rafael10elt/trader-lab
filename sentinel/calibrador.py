@@ -1,7 +1,6 @@
-"""Calibrador standalone da ROI (status ou gráfico) — uso alternativo à GUI.
+"""Calibrador standalone da área do gráfico — uso alternativo à GUI.
 
-    python calibrador.py status
-    python calibrador.py chart
+    python calibrador.py
 """
 import os
 import sys
@@ -18,9 +17,8 @@ import estado  # noqa: E402
 
 
 class SeletorArea:
-    def __init__(self, monitor, destino):
+    def __init__(self, monitor):
         self.monitor = monitor
-        self.destino = destino
         self.root = tk.Tk()
         self.root.overrideredirect(True)
         w, h = monitor["width"], monitor["height"]
@@ -28,14 +26,14 @@ class SeletorArea:
         self.root.attributes("-alpha", 0.3)
         self.root.attributes("-topmost", True)
         self.root.config(cursor="cross")
-        alvo = "CÉLULA DE STATUS" if destino == "status" else "ÁREA DO GRÁFICO"
-        self.root.title(f"Calibrar {alvo} — monitor {monitor['index']} (ESC cancela)")
+        self.root.title(f"Calibrar ÁREA DO GRÁFICO — monitor {monitor['index']} (ESC cancela)")
 
         self.canvas = tk.Canvas(self.root, cursor="cross", bg="grey")
         self.canvas.pack(fill="both", expand=True)
         self.canvas.create_text(
             12, 12, anchor="nw", fill="white", font=("Segoe UI", 11, "bold"),
-            text=f"MONITOR {monitor['index']} • Arraste sobre {alvo} • ESC cancela")
+            text=f"MONITOR {monitor['index']} • Arraste sobre a ÁREA DO GRÁFICO "
+                 f"(só as velas) • ESC cancela")
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
@@ -64,20 +62,12 @@ class SeletorArea:
             print("[!] Área muito pequena, nada salvo.")
             self.root.destroy()
             return
-        if self.destino == "status":
-            estado.salvar_roi_status(coords)
-        else:
-            estado.salvar_roi_chart(coords)
-        print(f"[OK] ROI {self.destino} salva: {coords}")
+        estado.salvar_roi_chart(coords)
+        print(f"[OK] ROI do gráfico salva: {coords}")
         self.root.destroy()
 
 
 if __name__ == "__main__":
-    destino = sys.argv[1] if len(sys.argv) > 1 else "status"
-    if destino not in ("status", "chart"):
-        print("Uso: python calibrador.py [status|chart]")
-        sys.exit(1)
-
     monitores = captura.listar_monitores()
     print(f"Monitores: {len(monitores)}")
     for m in monitores:
@@ -96,4 +86,4 @@ if __name__ == "__main__":
     else:
         monitor = monitores[0]
 
-    SeletorArea(monitor, destino).root.mainloop()
+    SeletorArea(monitor).root.mainloop()

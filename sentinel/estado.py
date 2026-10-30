@@ -11,7 +11,6 @@ from collections import deque
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CAMINHO_CONFIG = os.path.join(BASE_DIR, "config.json")
-CAMINHO_ROI_STATUS = os.path.join(BASE_DIR, "roi_status.json")
 CAMINHO_ROI_CHART = os.path.join(BASE_DIR, "roi_chart.json")
 CAMINHO_SINAIS = os.path.join(BASE_DIR, "data", "signals.jsonl")
 DASH_DIR = os.path.join(BASE_DIR, "dashboard")
@@ -20,7 +19,6 @@ DASH_DIR = os.path.join(BASE_DIR, "dashboard")
 CONFIG_PADRAO = {
     "timeframe_seg": 60,
     "delay_apos_fechamento_seg": 0.8,
-    "estavel_ha_seg": 2.0,
     "cooldown_seg": 120,
     "retry_apos_fechamento_seg": 6,
     "confirmacao_grafico_vivo": True,
@@ -36,6 +34,17 @@ CONFIG_PADRAO = {
         "paises": ["USD", "EUR"],
         "impacto": "High",
     },
+    # filtro matemático (machine learning) no fechamento da vela
+    "ml": {
+        "ativar": True,
+        "limiar": 0.60,          # P(continuação) mínima para o sinal seguir
+    },
+    # juiz confirmador por IA (Groq). Chave: GROQ_API_KEY ou groq_api_key
+    "ia_juiz": {
+        "ativar": True,          # se a chave existir, o juiz participa
+        "exigir_confirmacao": True,  # sem CONFIRMAR da IA => sem sinal
+    },
+    "groq_api_key": "",
     "porta_dashboard": 8777,
     "som_local": True,
 }
@@ -77,8 +86,6 @@ _LOCK = threading.Lock()
 STATE = {
     "rodando": False,
     "online": False,               # captura viva (heartbeat recente)
-    "estado": "AGUARDANDO FVG",     # BUY / SELL / AGUARDANDO FVG
-    "estado_desde": 0.0,            # epoch em que o estado atual começou
     "ativo": "MNQ",
     "timeframe_seg": 60,
     "proxima_vela_ts": 0.0,
@@ -86,11 +93,13 @@ STATE = {
     "ultima_checagem": "aguardando início",
     "flash_ate": 0.0,               # banner de alerta visível até este epoch
     "sinal_seq": 0,
-    "roi_status": None,
     "roi_chart": None,
-    "preview_status_b64": "",
     "preview_chart_b64": "",
     "preview_ts": 0.0,
+    # pipeline de decisão (ML + IA juiz)
+    "velas_reconhecidas": 0,        # nº de velas detectadas na última captura
+    "score_ml": None,               # P(continuação) da última avaliação
+    "veredito_ia": None,            # último veredito do juiz (dict) ou None
     "erro": "",
     "porta_dashboard": 8777,
 }
@@ -103,15 +112,8 @@ def lock():
 
 
 def carregar_rois_na_memoria():
-    STATE["roi_status"] = carregar_roi(CAMINHO_ROI_STATUS)
     STATE["roi_chart"] = carregar_roi(CAMINHO_ROI_CHART)
     STATE["timeframe_seg"] = int(STATE["timeframe_seg"])
-
-
-def salvar_roi_status(coords):
-    with open(CAMINHO_ROI_STATUS, "w", encoding="utf-8") as f:
-        json.dump(coords, f, indent=4)
-    STATE["roi_status"] = coords
 
 
 def salvar_roi_chart(coords):
@@ -151,17 +153,10 @@ def adicionar_sinal(sinal):
     return sinal
 
 
-def set_estado(nome):
-    """Atualza o estado da célula, registrando há quanto tempo ele vigora."""
+def set_estado_velas(n):
+    """Atualiza quantas velas a visão reconheceu no gráfico."""
     with _LOCK:
-        if STATE["estado"] != nome:
-            STATE["estado"] = nome
-            STATE["estado_desde"] = time.time()
-
-
-def estado_atual():
-    with _LOCK:
-        return STATE["estado"], time.time() - STATE["estado_desde"]
+        STATE["velas_reconhecidas"] = int(n)
 
 
 def snapshot():
@@ -172,8 +167,14 @@ def snapshot():
         copia["sinais"] = list(SINAIS)[:40]
         copia["flash"] = STATE["flash_ate"] > copia["agora"]
         copia.pop("flash_ate", None)
-        copia["roi_status"] = dict(STATE["roi_status"]) if STATE["roi_status"] else None
         copia["roi_chart"] = dict(STATE["roi_chart"]) if STATE["roi_chart"] else None
+        # campos auxiliares p/ o dashboard (IA + limiar ML)
+        try:
+            import juiz as _juiz
+            copia["ia_ativa"] = _juiz.juiz_ativo()
+        except Exception:
+            copia["ia_ativa"] = False
+        copia["limiar_ml"] = float(CONFIG.get("ml", {}).get("limiar", 0.60))
         return copia
 
 
