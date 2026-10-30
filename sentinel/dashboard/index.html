@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumi Sentinel Vision • Dashboard</title>
+<style>
+  :root{
+    --bg:#070b14; --panel:#0d1527; --panel2:#020617; --border:#1e293b;
+    --blue:#38bdf8; --green:#34d399; --red:#f87171; --yellow:#eab308;
+    --purple:#c084fc; --muted:#94a3b8; --text:#e2e8f0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+  header{background:var(--panel);padding:14px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+  h1{font-size:19px;color:var(--blue);letter-spacing:.5px}
+  .badge{font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;background:#1e293b}
+  .on{color:var(--green)} .off{color:var(--red)} .warn{color:var(--yellow)}
+  .grid{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;padding:18px;max-width:1400px;margin:0 auto}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--border)}
+  .card .body{padding:14px}
+  #chartImg{width:100%;border-radius:8px;background:#000;display:block;min-height:180px;object-fit:contain}
+  #statusImg{width:100%;max-width:340px;image-rendering:pixelated;border-radius:6px;background:#000;display:block;margin:0 auto}
+  .kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed #172033;font-size:14px}
+  .kv:last-child{border-bottom:none}
+  .kv b{font-weight:600}
+  #alerta{padding:16px;text-align:center;font-size:20px;font-weight:800;letter-spacing:1px;border-radius:10px;background:#1e293b;color:var(--muted);transition:.2s}
+  #alerta.buy{background:#065f46;color:#fff;animation:pulse 1s infinite}
+  #alerta.sell{background:#7f1d1d;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.55)}}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 6px;text-align:left;border-bottom:1px solid #172033}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .dir-buy{color:var(--green);font-weight:700}
+  .dir-sell{color:var(--red);font-weight:700}
+  .empty{color:#475569;font-size:13px;padding:14px;text-align:center}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 18px;max-width:1400px;margin:0 auto}
+  button{background:#1e293b;color:var(--text);border:1px solid #334155;border-radius:8px;padding:9px 15px;font-size:13px;cursor:pointer;font-weight:600}
+  button:hover{background:#334155}
+  button.primary{background:#0ea5e9;border-color:#0ea5e9;color:#fff}
+  #flash{position:fixed;inset:0;pointer-events:none;opacity:0;transition:.25s;z-index:50}
+  #flash.buy{background:radial-gradient(circle,rgba(52,211,153,.34),transparent 70%);opacity:1}
+  #flash.sell{background:radial-gradient(circle,rgba(248,113,113,.34),transparent 70%);opacity:1}
+  .err{color:var(--red);font-size:12px;padding:0 18px 10px}
+</style>
+</head>
+<body>
+<div id="flash"></div>
+
+<header>
+  <h1>⚡ LUMI SENTINEL VISION</h1>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="badge" id="badgeOnline">● verificando...</span>
+    <span class="badge" id="badgeRun">⏸ parado</span>
+    <span class="badge" style="color:var(--purple)" id="badgeAtivo">—</span>
+    <span class="badge" style="color:var(--blue)" id="badgeTF">—</span>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <h2>📺 Tela do gráfico (ao vivo)</h2>
+    <div class="body"><img id="chartImg" alt="aguardando calibração do gráfico" /></div>
+  </div>
+
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>🚨 Alerta</h2>
+      <div class="body">
+        <div id="alerta">AGUARDANDO SETUP</div>
+        <div class="kv" style="margin-top:12px"><span>Estado da célula</span><b id="vEstado">—</b></div>
+        <div class="kv"><span>Última checagem</span><b id="vChecagem" style="text-align:right;font-weight:500">—</b></div>
+        <div class="kv"><span>Próxima vela</span><b id="vVela" style="color:var(--green)">—</b></div>
+        <div class="kv"><span>Filtros</span><b id="vFiltro" style="font-weight:500">—</b></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>🎯 Célula de status (leitura pixel a pixel)</h2>
+      <div class="body"><img id="statusImg" alt="sem calibração" /></div>
+    </div>
+
+    <div class="card">
+      <h2>🔊 Som</h2>
+      <div class="body" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" id="btnSom">Ativar som do alerta</button>
+        <button id="btnTeste">Testar beep</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btnRecarregar">↻ Recarregar agora</button>
+  <span style="color:var(--muted);font-size:12px;align-self:center" id="ultimaAtualizacao">—</span>
+</div>
+
+<div class="card" style="max-width:1400px;margin:0 auto 24px;border-radius:12px">
+  <h2>📋 Histórico de sinais</h2>
+  <div class="body" style="padding:0">
+    <table>
+      <thead><tr><th>Hora (UTC)</th><th>Ativo</th><th>Direção</th><th>TF</th><th>Detalhe</th></tr></thead>
+      <tbody id="tbSinais"><tr><td colspan="5" class="empty">nenhum sinal ainda</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<div class="err" id="vErro"></div>
+
+<script>
+let somAtivo = false;
+let audioCtx = null;
+let ultimoSinalId = 0;
+let primeiroLoad = true;
+
+function beep(direcao){
+  if(!somAtivo) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const freqs = direcao === 'BUY' ? [660,880,1180] : [1180,880,660];
+    const agora = audioCtx.currentTime;
+    freqs.forEach((f,i)=>{
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(f, agora + i*0.22);
+      g.gain.setValueAtTime(0.25, agora + i*0.22);
+      g.gain.exponentialRampToValueAtTime(0.001, agora + i*0.22 + 0.3);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(agora + i*0.22); o.stop(agora + i*0.22 + 0.32);
+    });
+    // alarme repetido por 30s (padrão do sistema modelo)
+    const fim = Date.now() + 30000;
+    const rep = setInterval(()=>{
+      if(Date.now() > fim || !somAtivo){ clearInterval(rep); return; }
+      const t = audioCtx.currentTime;
+      freqs.forEach((f,i)=>{
+        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        o.type='square'; o.frequency.setValueAtTime(f, t + i*0.22);
+        g.gain.setValueAtTime(0.18, t + i*0.22);
+        g.gain.exponentialRampToValueAtTime(0.001, t + i*0.22 + 0.3);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t + i*0.22); o.stop(t + i*0.22 + 0.32);
+      });
+    }, 2000);
+  }catch(e){ console.warn('áudio bloqueado', e); }
+}
+
+document.getElementById('btnSom').addEventListener('click', e=>{
+  somAtivo = !somAtivo;
+  e.target.textContent = somAtivo ? '🔊 Som ATIVADO' : 'Ativar som do alerta';
+  if(somAtivo){
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    audioCtx.resume();
+    beep('BUY'); beep('SELL');
+  }
+});
+document.getElementById('btnTeste').addEventListener('click', ()=>{
+  if(!somAtivo){ somAtivo = true;
+    document.getElementById('btnSom').textContent = '🔊 Som ATIVADO'; }
+  beep('BUY');
+});
+document.getElementById('btnRecarregar').addEventListener('click', ()=>poll());
+
+function fmtHora(iso){
+  try{ return iso.slice(11,19); }catch(e){ return iso; }
+}
+
+function pintarSinais(sinais){
+  const tb = document.getElementById('tbSinais');
+  if(!sinais.length){ tb.innerHTML = '<tr><td colspan="5" class="empty">nenhum sinal ainda</td></tr>'; return; }
+  tb.innerHTML = sinais.map(s=>`
+    <tr>
+      <td>${fmtHora(s.ts)}</td>
+      <td>${s.symbol||'—'}</td>
+      <td class="${s.direction==='BUY'?'dir-buy':'dir-sell'}">${s.direction}</td>
+      <td>${s.timeframe||'—'}</td>
+      <td style="color:#94a3b8">${s.info||''}</td>
+    </tr>`).join('');
+}
+
+async function poll(){
+  try{
+    const resp = await fetch('/api/state', {cache:'no-store'});
+    const s = await resp.json();
+    if(s.erro){ document.getElementById('vErro').textContent = '⚠ ' + s.erro; }
+
+    const badge = document.getElementById('badgeOnline');
+    if(s.online){ badge.textContent = '● SENTINELA ONLINE'; badge.className = 'badge on'; }
+    else { badge.textContent = '○ SEM SINAL DE TELA'; badge.className = 'badge off'; }
+
+    const run = document.getElementById('badgeRun');
+    if(s.rodando){ run.textContent = '▶ vigiando'; run.className = 'badge on'; }
+    else { run.textContent = '⏸ parado'; run.className = 'badge'; }
+
+    document.getElementById('badgeAtivo').textContent = s.ativo || '—';
+    document.getElementById('badgeTF').textContent = (s.timeframe_seg>=60 ? (s.timeframe_seg/60)+'m' : s.timeframe_seg+'s');
+    document.getElementById('vEstado').textContent = s.estado || '—';
+    document.getElementById('vChecagem').textContent = s.ultima_checagem || '—';
+
+    if(s.rodando && s.proxima_vela_ts){
+      const falta = Math.max(0, s.proxima_vela_ts - s.agora);
+      const mm = Math.floor(falta/60), ss = Math.floor(falta%60);
+      document.getElementById('vVela').textContent = `em ${mm}:${String(ss).padStart(2,'0')}`;
+    } else {
+      document.getElementById('vVela').textContent = '—';
+    }
+
+    if(s.preview_chart_b64) document.getElementById('chartImg').src = 'data:image/jpeg;base64,' + s.preview_chart_b64;
+    if(s.preview_status_b64) document.getElementById('statusImg').src = 'data:image/jpeg;base64,' + s.preview_status_b64;
+
+    document.getElementById('ultimaAtualizacao').textContent =
+      'atualizado às ' + new Date().toLocaleTimeString();
+
+    const alerta = document.getElementById('alerta');
+    const flash = document.getElementById('flash');
+    const novo = (s.sinais && s.sinais.length) ? s.sinais[0] : null;
+
+    if(novo && novo.id > ultimoSinalId && s.rodando){
+      if(!primeiroLoad || novo.id > 0){
+        if(!primeiroLoad){
+          alerta.textContent = (novo.direction==='BUY'?'🟢 SINAL DE COMPRA':'🔴 SINAL DE VENDA') + ' • ' + (novo.symbol||'') + ' ' + (novo.timeframe||'');
+          alerta.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+          flash.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+          setTimeout(()=>{ flash.className=''; }, 4000);
+          beep(novo.direction);
+        }
+      }
+      ultimoSinalId = novo.id;
+    } else if(s.rodando && s.flash){
+      if(novo){
+        alerta.textContent = (novo.direction==='BUY'?'🟢 SINAL DE COMPRA':'🔴 SINAL DE VENDA') + ' • ' + (novo.symbol||'');
+        alerta.className = novo.direction === 'BUY' ? 'buy' : 'sell';
+      }
+    } else if(s.rodando && !s.flash){
+      alerta.textContent = 'AGUARDANDO SETUP';
+      alerta.className = '';
+    } else if(!s.rodando){
+      alerta.textContent = 'PAUSADO';
+      alerta.className = '';
+    }
+
+    pintarSinais(s.sinais || []);
+    primeiroLoad = false;
+  }catch(e){
+    document.getElementById('badgeOnline').textContent = '○ SEM CONEXÃO COM O SENTINELA';
+    document.getElementById('badgeOnline').className = 'badge off';
+  }
+}
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

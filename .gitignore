@@ -1,10 +1,16 @@
-node_modules/
-dist/
-.env
-.env.*
-!.env.example
+# Python
 __pycache__/
-.venv/
 *.py[cod]
-*.tsbuildinfo
-backend/data/
+.venv/
+venv/
+*.egg-info/
+
+# Sentinel (gerados localmente)
+sentinel/data/
+sentinel/roi_status.json
+sentinel/roi_chart.json
+
+# Editor/SO
+.DS_Store
+.idea/
+.vscode/

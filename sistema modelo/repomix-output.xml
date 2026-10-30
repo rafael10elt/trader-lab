@@ -1,0 +1,2694 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+sentinel/
+  web/
+    public/
+      images/
+        pwa/
+          android/
+            launchericon-192x192.png
+            launchericon-512x512.png
+          ios/
+            180.png
+        logo_cop_sem_fundo.png
+      _redirects
+    src/
+      App.css
+      App.jsx
+      index.css
+      main.jsx
+    .gitignore
+    .oxlintrc.json
+    index.html
+    package.json
+    postcss.config.js
+    README.md
+    tailwind.config.js
+    vite.config.js
+  calibrator.py
+  CRIAR_ATALHO_DESKTOP.bat
+  requirements.txt
+  roi_config.json
+  sentinel.py
+.gitignore
+banco.sql
+diario.md
+netlify.toml
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="sentinel/web/public/_redirects">
+/*    /index.html   200
+</file>
+
+<file path="sentinel/web/src/App.css">
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
+}
+
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
+}
+
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
+
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
+
+  .logo {
+    height: 18px;
+  }
+
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    li {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
+}
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+</file>
+
+<file path="sentinel/web/src/App.jsx">
+import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { 
+  Volume2, VolumeX, ShieldAlert, ArrowUpRight, ArrowDownRight, 
+  Zap, CheckCircle2, Eye, Activity, Trash2, Clock, Play, 
+  Calendar, Award, BookOpen, Sparkles, Upload, Key,
+  TrendingUp, AlertOctagon, CheckSquare, RefreshCw, Plus, X, Globe, ListChecks
+} from 'lucide-react';
+
+const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// Cadeia de modelos de visão com fallback automático (a Groq descontinua
+// modelos com frequência — o app tenta nesta ordem e usa o 1º que responder)
+const GROQ_VISION_CANDIDATES = [
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
+  "qwen/qwen3.8-27b",
+];
+
+// Extrai a mensagem real de erro da API Groq
+const readGroqError = async (res) => {
+  try {
+    const data = await res.json();
+    return data?.error?.message || JSON.stringify(data).slice(0, 300);
+  } catch {
+    return `HTTP ${res.status} ${res.statusText || ''}`.trim();
+  }
+};
+
+export default function App() {
+  // Navegação
+  const [activeTab, setActiveTab] = useState('cockpit'); // 'cockpit', 'scanner', 'accounts', 'journal'
+
+  // Sentinela e Sinais
+  const [signals, setSignals] = useState([]);
+  const [activeSignal, setActiveSignal] = useState(null);
+  const lastSignalIdRef = useRef(0); // maior id de sinal já visto (base do polling fallback)
+  const [selectedSignals, setSelectedSignals] = useState([]);
+  const [showDeleteSignalsModal, setShowDeleteSignalsModal] = useState(false);
+  const [isDeletingSignals, setIsDeletingSignals] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [sentinel, setSentinel] = useState({ 
+    is_online: false, 
+    current_state: 'DESCONECTADO', 
+    monitored_symbol: 'MNQ',
+    preview_base64: null 
+  });
+
+  // Notícias Econômicas
+  const [news, setNews] = useState([]);
+  const [activeNewsAlert, setActiveNewsAlert] = useState(null);
+
+  // Groq Vision & Scanner (Compatível com prop-copilot: lê tanto 'lumi_groq_key' quanto 'ai_key')
+  const [groqKey, setGroqKey] = useState(
+    localStorage.getItem('lumi_groq_key') || localStorage.getItem('ai_key') || ''
+  );
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannedSetups, setScannedSetups] = useState([]);
+  const [groqStatus, setGroqStatus] = useState(
+    (localStorage.getItem('lumi_groq_key') || localStorage.getItem('ai_key')) ? 'checking' : 'missing'
+  );
+  const [groqError, setGroqError] = useState(null);
+  const [activeVisionModel, setActiveVisionModel] = useState(GROQ_VISION_CANDIDATES[0]);
+
+  // Validação dinâmica idêntica ao prop-copilot-frontend:
+  // Consulta /models para autenticar a chave e já descobre o modelo de visão disponível
+  const validateGroqKey = async (key) => {
+    const k = (key || '').trim();
+    if (!k) { 
+      setGroqStatus('missing'); 
+      setGroqError(null); 
+      return { ok: false, error: null }; 
+    }
+    setGroqStatus('checking');
+    setGroqError(null);
+    try {
+      const resModels = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { 'Authorization': `Bearer ${k}` }
+      });
+      if (!resModels.ok) {
+        const error = { step: 'Autenticação (/models)', status: resModels.status, message: await readGroqError(resModels) };
+        setGroqStatus('error');
+        setGroqError(error);
+        return { ok: false, error };
+      }
+      
+      const modelsData = await resModels.json();
+      const ids = modelsData?.data?.map(m => m.id) || [];
+      // Testa a cadeia em ordem (prioriza candidatos anunciados em /models).
+      // O 1º que responder vira o modelo ativo — acabou o "travou no modelo morto".
+      const ordered = [
+        ...GROQ_VISION_CANDIDATES.filter(c => ids.includes(c)),
+        ...GROQ_VISION_CANDIDATES.filter(c => !ids.includes(c))
+      ];
+      let working = null;
+      let lastErr = null;
+      for (const candidate of ordered) {
+        try {
+          const ping = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${k}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: candidate, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 })
+          });
+          if (ping.ok) { working = candidate; break; }
+          lastErr = { step: `Modelo ${candidate}`, status: ping.status, message: await readGroqError(ping) };
+        } catch (ePing) {
+          lastErr = { step: `Modelo ${candidate}`, status: 0, message: ePing.message };
+        }
+      }
+      if (!working) {
+        const error = lastErr || { step: 'Modelos de visão', status: 0, message: 'Nenhum modelo de visão respondeu.' };
+        setGroqStatus('error');
+        setGroqError(error);
+        return { ok: false, error };
+      }
+      setActiveVisionModel(working);
+
+      setGroqStatus('ok');
+      setGroqError(null);
+      return { ok: true, error: null };
+    } catch (e) {
+      const error = { step: 'Rede', status: 0, message: `Sem resposta da API Groq (${e.message}). Verifique conexão.` };
+      setGroqStatus('error');
+      setGroqError(error);
+      return { ok: false, error };
+    }
+  };
+
+  useEffect(() => {
+    if (groqKey) validateGroqKey(groqKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Contas de Mesa e Diário
+  const [accounts, setAccounts] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [newTrade, setNewTrade] = useState({ 
+    account_id: '', 
+    symbol: 'MNQ', 
+    direction: 'BUY', 
+    setup_name: 'Setup 1 - Power Hour', 
+    result_r: 1.5, 
+    result_usd: 150, 
+    rule_respected: true, 
+    notes: '' 
+  });
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [accountForm, setAccountForm] = useState({ 
+    firm_name: 'Apex Trader Funding', 
+    account_name: 'APEX-50K-01', 
+    size_usd: 50000, 
+    cost_usd: 40, 
+    status: 'EM_ANDAMENTO' 
+  });
+
+  // Checklist Diário
+  const [checklist, setChecklist] = useState(() => {
+    const saved = localStorage.getItem('lumi_checklist');
+    return saved ? JSON.parse(saved) : [
+      { id: 1, text: 'Verificar Notícias 3★ USD (Nenhum trade 5m antes/depois)', done: false },
+      { id: 2, text: 'Confirmar Janela Operacional (08:15-11:00 ou 18:15-20:45 Dublin)', done: false },
+      { id: 3, text: 'Limpar a Mente: Risco travado em $100 por trade (1R)', done: false },
+      { id: 4, text: 'Calibrar Sentinela na célula de Status do TradingView', done: false },
+      { id: 5, text: 'Respeitar Stop Loss no gráfico. Jamais mover stop!', done: false }
+    ];
+  });
+
+  // Relógios
+  const [timeDublin, setTimeDublin] = useState('');
+  const [timeNY, setTimeNY] = useState('');
+
+  // Áudio
+  const audioContextRef = useRef(null);
+  const alarmIntervalRef = useRef(null);
+  const alarmTimeoutRef = useRef(null);
+
+  const ensureAudioContext = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+  };
+
+  const triggerAudioPulse = (type) => {
+    if (!audioContextRef.current) return;
+    try {
+      const ctx = audioContextRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const now = ctx.currentTime;
+      osc.type = 'sawtooth';
+      if (type === 'BUY') {
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.exponentialRampToValueAtTime(1050, now + 0.22);
+      } else {
+        osc.frequency.setValueAtTime(950, now);
+        osc.frequency.exponentialRampToValueAtTime(420, now + 0.22);
+      }
+      gain.gain.setValueAtTime(0.70, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } catch (e) { console.error(e); }
+  };
+
+  const triggerNewsChime = () => {
+    if (!audioContextRef.current) return;
+    try {
+      const ctx = audioContextRef.current;
+      const now = ctx.currentTime;
+      [880, 1320, 1760].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+        gain.gain.setValueAtTime(0.4, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.4);
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.4);
+      });
+    } catch (e) { console.error(e); }
+  };
+
+  const stopAlarm = () => {
+    if (alarmIntervalRef.current) clearInterval(alarmIntervalRef.current);
+    if (alarmTimeoutRef.current) clearTimeout(alarmTimeoutRef.current);
+    alarmIntervalRef.current = null;
+    alarmTimeoutRef.current = null;
+  };
+
+  const startAlarm30s = async (type) => {
+    stopAlarm();
+    await ensureAudioContext();
+    triggerAudioPulse(type);
+    alarmIntervalRef.current = setInterval(() => triggerAudioPulse(type), 600);
+    alarmTimeoutRef.current = setTimeout(() => stopAlarm(), 30000);
+  };
+
+  // Relógios
+  useEffect(() => {
+    const updateClocks = () => {
+      const now = new Date();
+      setTimeDublin(now.toLocaleTimeString('en-GB', { timeZone: 'Europe/Dublin', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setTimeNY(now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+    };
+    updateClocks();
+    const interval = setInterval(updateClocks, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Notícias de Alto Impacto
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const res = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const todayStr = new Date().toISOString().split('T')[0];
+        const highNews = data.filter(item => 
+          item.impact === 'High' && 
+          (item.country === 'USD' || item.country === 'EUR') &&
+          item.date.startsWith(todayStr)
+        );
+        setNews(highNews);
+
+        const nowMs = Date.now();
+        highNews.forEach(item => {
+          const itemTime = new Date(item.date).getTime();
+          const diffMinutes = (itemTime - nowMs) / 60000;
+          if (diffMinutes > 0 && diffMinutes <= 15) {
+            setActiveNewsAlert(item);
+            if (soundEnabled) triggerNewsChime();
+          }
+        });
+      } catch (err) {
+        console.warn("Falha ao buscar calendário de notícias:", err);
+      }
+    };
+
+    fetchNews();
+    const interval = setInterval(fetchNews, 120000);
+    return () => clearInterval(interval);
+  }, [soundEnabled]);
+
+  // Sincronização Supabase
+  useEffect(() => {
+    supabase.from('lumi_signals_cop').select('*').order('created_at', { ascending: false }).limit(40)
+      .then(r => {
+        if (r.data) {
+          setSignals(r.data);
+          if (r.data.length > 0) lastSignalIdRef.current = Math.max(...r.data.map(s => Number(s.id)));
+        }
+      });
+
+    supabase.from('sentinel_status_cop').select('*').eq('id', 1).single()
+      .then(r => r.data && setSentinel(r.data));
+
+    supabase.from('prop_accounts_cop').select('*').order('created_at', { ascending: false })
+      .then(r => r.data && setAccounts(r.data));
+
+    supabase.from('trade_logs_cop').select('*').order('created_at', { ascending: false }).limit(50)
+      .then(r => r.data && setTrades(r.data));
+
+    supabase.from('daily_setups_cop').select('*').order('rank_pos', { ascending: true })
+      .then(r => r.data && setScannedSetups(r.data));
+
+    const channel = supabase.channel('lumi_copilot_v3')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lumi_signals_cop' }, payload => {
+        const s = payload.new;
+        lastSignalIdRef.current = Math.max(lastSignalIdRef.current, Number(s.id));
+        setSignals(prev => [s, ...prev].slice(0, 40));
+        setActiveSignal(s);
+        if (soundEnabled) startAlarm30s(s.direction);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sentinel_status_cop' }, payload => {
+        setSentinel(payload.new);
+      })
+      .subscribe((status) => {
+        if (status !== 'SUBSCRIBED') console.warn('[realtime sinais]', status);
+      });
+
+    return () => {
+      stopAlarm();
+      supabase.removeChannel(channel);
+    };
+  }, [soundEnabled]);
+
+  // Fallback anti-falha: polling a cada 5s detecta sinais novos mesmo se o
+  // realtime (websocket) estiver bloqueado — dispara o mesmo alerta + som
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const { data } = await supabase.from('lumi_signals_cop')
+          .select('*').gt('id', lastSignalIdRef.current).order('id', { ascending: true });
+        if (data && data.length > 0) {
+          const latest = data[data.length - 1];
+          lastSignalIdRef.current = Number(latest.id);
+          setSignals(prev => [...data.slice().reverse(), ...prev].slice(0, 40));
+          setActiveSignal(latest);
+          if (soundEnabled) startAlarm30s(latest.direction);
+        }
+      } catch (e) { /* polling silencioso */ }
+    };
+    const t = setInterval(poll, 5000);
+    return () => clearInterval(t);
+  }, [soundEnabled]);
+
+  // Scanner de Otimização via Groq Vision
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const key = (groqKey || '').trim();
+    if (!key) {
+      setFeedback({
+        title: "Chave Groq necessária",
+        message: "Por favor, adicione sua API Key do Groq nas configurações primeiro!",
+        tone: "info",
+        actionLabel: "Configurar chave",
+        onAction: () => { setFeedback(null); setShowKeyModal(true); }
+      });
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      // 1. Resolve o modelo de visão funcionando (ativo 1º, depois a cadeia).
+      // Se a Groq matou o modelo no meio do caminho, o próximo assume sozinho.
+      const tryModels = [activeVisionModel, ...GROQ_VISION_CANDIDATES.filter(c => c !== activeVisionModel)];
+      let visionModel = tryModels[0];
+      for (const candidate of tryModels) {
+        try {
+          const ping = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: candidate, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 })
+          });
+          if (ping.ok) { visionModel = candidate; break; }
+          const pmsg = (await readGroqError(ping)).toLowerCase();
+          const gone = ping.status === 404 || ping.status === 410
+            || pmsg.includes('decommission') || pmsg.includes('not found')
+            || pmsg.includes('does not exist') || pmsg.includes('model_not_found');
+          if (!gone) { visionModel = candidate; break; } // erro de cota/auth: trocar de modelo não resolve
+        } catch (errCheck) {
+          break; // sem rede: mantém o ativo e o erro aparece no envio real
+        }
+      }
+      if (visionModel !== activeVisionModel) setActiveVisionModel(visionModel);
+
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = reader.result;
+
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: visionModel,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `Você é um analista quantitativo de mesa proprietária em NASDAQ. Analise rigorosamente a tabela do otimizador na imagem fornecida e extraia exatamente os 3 melhores setups seguindo a melhor relação entre Lucro Líquido ($ líq), menor Drawdown (DD $) e maior R médio.
+Retorne ESTRITAMENTE um objeto JSON válido no seguinte formato:
+{
+  "setups": [
+    {
+      "rank_pos": 1,
+      "emas": "9/21",
+      "trigger_name": "EMA + FVG",
+      "sub_mode": "Formado",
+      "dist": "—",
+      "stop_type": "ATR 1.5x",
+      "rr": "1:1.5",
+      "win_rate": "51.2%",
+      "r_total": "+24R",
+      "net_usd": 2400,
+      "dd_usd": 500,
+      "notes": "Campeão absoluto em Win Rate e baixo DD para conta Prop"
+    }
+  ]
+}`
+                  },
+                  {
+                    type: "image_url",
+                    image_url: { url: base64Data }
+                  }
+                ]
+              }
+            ],
+            response_format: { type: "json_object" }
+          })
+        });
+
+        const resData = await response.json();
+        if (resData.error) {
+          setGroqStatus('error');
+          const apiError = { step: `Scanner IA (${visionModel})`, status: response.status, message: resData.error.message || 'Erro desconhecido' };
+          setGroqError(apiError);
+          setFeedback({
+            title: "Falha no Scanner IA",
+            message: "A Groq recusou a chamada. Veja o detalhe técnico abaixo.",
+            tone: "error",
+            detail: `[${apiError.step}] HTTP ${apiError.status}: ${apiError.message}`
+          });
+        } else if (resData.choices && resData.choices[0]) {
+          setGroqStatus('ok');
+          const parsed = JSON.parse(resData.choices[0].message.content);
+          if (parsed.setups && parsed.setups.length > 0) {
+            setScannedSetups(parsed.setups);
+            await supabase.from('daily_setups_cop').delete().neq('id', 0);
+            for (const item of parsed.setups) {
+              await supabase.from('daily_setups_cop').insert(item);
+            }
+          }
+        }
+        setIsScanning(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Erro no Scanner Groq:", err);
+      setGroqStatus('error');
+      setFeedback({
+        title: "Falha no Scanner IA",
+        message: "Falha ao analisar imagem via Groq Vision. Verifique sua chave API.",
+        tone: "error"
+      });
+      setIsScanning(false);
+    }
+  };
+
+  // Salvar Nova Conta Prop
+  const handleSaveAccount = async (e) => {
+    e.preventDefault();
+    const { data } = await supabase.from('prop_accounts_cop').insert(accountForm).select().single();
+    if (data) {
+      setAccounts([data, ...accounts]);
+      setShowAddAccount(false);
+    }
+  };
+
+  // Registrar Trade
+  const handleLogTrade = async (e) => {
+    e.preventDefault();
+    const { data } = await supabase.from('trade_logs_cop').insert(newTrade).select().single();
+    if (data) {
+      setTrades([data, ...trades]);
+      setNewTrade({ ...newTrade, result_r: 0, result_usd: 0, notes: '' });
+    }
+  };
+
+  // Alternar Checklist
+  const toggleChecklist = (id) => {
+    const updated = checklist.map(c => c.id === id ? { ...c, done: !c.done } : c);
+    setChecklist(updated);
+    localStorage.setItem('lumi_checklist', JSON.stringify(updated));
+  };
+
+  const resetChecklist = () => {
+    const reset = checklist.map(c => ({ ...c, done: false }));
+    setChecklist(reset);
+    localStorage.setItem('lumi_checklist', JSON.stringify(reset));
+  };
+
+  // Gerenciador de Sinais
+  const toggleSignal = (id) => {
+    setSelectedSignals(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllSignals = () => {
+    setSelectedSignals(prev =>
+      prev.length === signals.length ? [] : signals.map(s => s.id)
+    );
+  };
+
+  const deleteSelectedSignals = () => {
+    if (selectedSignals.length === 0) return;
+    setShowDeleteSignalsModal(true);
+  };
+
+  const confirmDeleteSelectedSignals = async () => {
+    if (selectedSignals.length === 0) return;
+    setIsDeletingSignals(true);
+    const { error } = await supabase.from('lumi_signals_cop').delete().in('id', selectedSignals);
+    setIsDeletingSignals(false);
+    if (!error) {
+      setSignals(prev => prev.filter(s => !selectedSignals.includes(s.id)));
+      setSelectedSignals([]);
+      setShowDeleteSignalsModal(false);
+    } else {
+      setFeedback({
+        title: "Falha ao apagar",
+        message: "Falha ao apagar. Tente novamente.",
+        tone: "error"
+      });
+    }
+  };
+
+  const totalPnL = trades.reduce((acc, t) => acc + Number(t.result_usd || 0), 0);
+  const totalR = trades.reduce((acc, t) => acc + Number(t.result_r || 0), 0);
+
+  return (
+    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-sans antialiased overflow-x-clip">
+      
+      {/* HEADER DE COMANDO INSTITUCIONAL */}
+      <header className="w-full bg-[#0b1222] border-b border-slate-800 px-3 py-2.5 sm:px-6 sm:py-3 flex flex-col md:flex-row justify-between items-center gap-2 sm:gap-3 sticky top-0 z-40 shadow-xl">
+        <div className="flex items-center flex-wrap gap-2 sm:gap-3 w-full md:w-auto justify-between md:justify-start min-w-0">
+          
+          {/* LOGO OFICIAL LUMI COPILOT */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink-0">
+            <div className="relative group shrink-0">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl blur opacity-40 group-hover:opacity-75 transition duration-300"></div>
+              <div className="relative p-1 bg-[#070d1a] border border-cyan-500/30 rounded-xl flex items-center justify-center shadow-lg">
+                <img 
+                  src="/images/logo_cop_sem_fundo.png" 
+                  alt="Lumi Copilot" 
+                  className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
+                />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h1 className="text-xs sm:text-base font-black tracking-wider text-white whitespace-nowrap">LUMI COPILOT</h1>
+                <span className="text-[8px] sm:text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono font-bold whitespace-nowrap">PRO DESK</span>
+              </div>
+              <p className="text-[9px] sm:text-[10px] text-slate-400 font-mono truncate">NASDAQ Scalp • Dublin Hub</p>
+            </div>
+          </div>
+
+          {/* RELÓGIOS DE FUSO */}
+          <div className="flex items-center gap-1 sm:gap-2 font-mono text-[9px] sm:text-[11px] bg-[#070d1a] border border-slate-800 px-2 sm:px-3 py-1.5 rounded-xl shrink-0">
+            <div className="flex items-center gap-1 sm:gap-1.5 text-slate-300">
+              <Globe size={12} className="text-cyan-400" />
+              <span>DUB:</span>
+              <strong className="text-white">{timeDublin || '--:--'}</strong>
+            </div>
+            <span className="text-slate-600">|</span>
+            <div className="flex items-center gap-1 sm:gap-1.5 text-slate-300">
+              <span>NY:</span>
+              <strong className="text-amber-400">{timeNY || '--:--'}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* NAVEGAÇÃO E AÇÕES — abas rolam, botões de ação sempre visíveis */}
+        <div className="flex items-center gap-2 w-full md:w-auto min-w-0">
+          <div className="flex bg-[#070d1a] p-1 rounded-xl border border-slate-800 overflow-x-auto flex-1 md:flex-none min-w-0">
+            <button 
+              onClick={() => setActiveTab('cockpit')}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeTab === 'cockpit' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <Activity size={13} /> Cockpit
+            </button>
+            <button 
+              onClick={() => setActiveTab('scanner')}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeTab === 'scanner' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <Sparkles size={13} /> Scanner IA
+            </button>
+            <button 
+              onClick={() => setActiveTab('accounts')}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeTab === 'accounts' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <Award size={13} /> Mesas
+            </button>
+            <button 
+              onClick={() => setActiveTab('journal')}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 ${activeTab === 'journal' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+              <BookOpen size={13} /> Diário
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`p-2 rounded-xl text-xs font-bold transition-all border shrink-0 ${
+              soundEnabled ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}
+            title={soundEnabled ? "Sirene Armada" : "Sirene Desarmada"}>
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+
+          <button
+            onClick={() => setShowKeyModal(true)}
+            className={`p-2 rounded-xl transition-all border shrink-0 ${
+              groqStatus === 'ok' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              : groqStatus === 'error' ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+              : groqStatus === 'checking' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse'
+              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+            }`}
+            title={
+              groqStatus === 'ok' ? `Groq conectado — modelo: ${activeVisionModel}`
+              : groqStatus === 'error' ? 'Falha na chave Groq — clique para corrigir'
+              : groqStatus === 'checking' ? 'Validando chave Groq...'
+              : 'Sem chave Groq — clique para configurar'
+            }>
+            <Key size={16} />
+          </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ALERTA DE NOTÍCIA 3 ESTRELAS PISCANDO */}
+      {activeNewsAlert && (
+        <div className="bg-rose-950/90 border-b border-rose-500/60 px-3 sm:px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:justify-between text-xs text-rose-200 animate-pulse font-mono">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertOctagon size={16} className="text-rose-400 shrink-0" />
+            <span className="truncate"><strong>ALERTA DE VOLATILIDADE MESA:</strong> {activeNewsAlert.country} - {activeNewsAlert.title}</span>
+          </div>
+          <span className="text-[11px] bg-rose-900/60 px-2 py-0.5 rounded border border-rose-700 self-start sm:self-auto whitespace-nowrap">PAUSA OBRIGATÓRIA</span>
+        </div>
+      )}
+
+      {/* POPUP DE ALERTA DE TRADE ATIVO DA SENTINELA */}
+      {activeSignal && (
+        <div className="p-3 sm:p-4 bg-gradient-to-r from-emerald-950 to-slate-900 border-b border-emerald-500 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between shadow-2xl">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`p-2.5 rounded-xl font-black shrink-0 ${activeSignal.direction === 'BUY' ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
+              {activeSignal.direction === 'BUY' ? <ArrowUpRight size={22} /> : <ArrowDownRight size={22} />}
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] text-emerald-400 font-mono font-bold">GATILHO SENTINELA ATIVO</span>
+              <h3 className="text-base font-bold text-white truncate">{activeSignal.direction} em {activeSignal.symbol}</h3>
+            </div>
+          </div>
+          <button
+            onClick={() => { stopAlarm(); setActiveSignal(null); }}
+            className="px-4 py-2 bg-white text-slate-950 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 w-full sm:w-auto shrink-0">
+            <CheckCircle2 size={15} className="text-emerald-600" /> CIENTE (PARAR SOM)
+          </button>
+        </div>
+      )}
+
+      {/* CORPO PRINCIPAL - COCKPIT FULLSCREEN */}
+      <div className="flex-1 p-3 sm:p-5 max-w-[1700px] w-full mx-auto">
+
+        {/* ================= ABA 1: COCKPIT OPERACIONAL ================= */}
+        {activeTab === 'cockpit' && (
+          <>
+          {/* FAIXA NOTÍCIAS 3★ */}
+          <div className="bg-[#0b1222] border border-slate-800 px-3 sm:px-4 py-2.5 rounded-2xl shadow-lg mb-4 flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Calendar size={14} className="text-rose-400" />
+              <span className="text-[11px] sm:text-xs font-bold text-slate-200 uppercase font-mono whitespace-nowrap">3★ Hoje</span>
+              {news.length > 0 && (
+                <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded-full font-mono font-bold">{news.length}</span>
+              )}
+            </div>
+            {news.length === 0 ? (
+              <p className="text-[11px] sm:text-xs text-slate-500 truncate">Nenhum evento de alto impacto hoje — mesa liberada.</p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto flex-1 min-w-0 py-0.5">
+                {news.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 bg-[#070d1a] border border-slate-800/80 rounded-xl px-2.5 py-1.5 text-[11px] whitespace-nowrap shrink-0 font-mono">
+                    <span className="text-[9px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">{item.country}</span>
+                    <span className="text-slate-200 max-w-[180px] sm:max-w-[260px] truncate">{item.title}</span>
+                    <span className="text-slate-400">
+                      {new Date(item.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            {/* Layout plano: cada card abaixo é item direto do grid (lg:order define a posição no desktop) */}
+              
+              {/* Card Sentinela Local com Feed Ao Vivo */}
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg min-w-0 lg:col-span-4 lg:order-1">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-xs font-bold text-slate-400 uppercase font-mono tracking-wider flex items-center gap-1.5">
+                    <Eye size={14} className="text-cyan-400" /> Sentinela OpenCV
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full font-mono flex items-center gap-1.5 ${
+                    sentinel.is_online ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400'
+                  }`}>
+                    {sentinel.is_online && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />}
+                    {sentinel.is_online ? 'ONLINE' : 'DESCONECTADA'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono mb-3">
+                  <div className="bg-[#070d1a] p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 block">Ativo em Foco</span>
+                    <strong className="text-purple-300 text-sm">{sentinel.monitored_symbol || 'MNQ'}</strong>
+                  </div>
+                  <div className="bg-[#070d1a] p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 block">Estado Tela</span>
+                    <strong className="text-white text-sm">{sentinel.current_state}</strong>
+                  </div>
+                </div>
+
+                {/* FEED VISUAL EM TEMPO REAL */}
+                <div className="bg-[#040812] border border-slate-800/90 rounded-xl p-2.5 flex flex-col items-center">
+                  <div className="w-full flex justify-between items-center mb-1.5 text-[9px] font-mono text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${sentinel.is_online ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                      FEED VISUAL (ROI)
+                    </span>
+                    <span>1.5s refresh</span>
+                  </div>
+
+                  {sentinel.preview_base64 && sentinel.is_online ? (
+                    <img 
+                      src={sentinel.preview_base64} 
+                      alt="O que a sentinela vê" 
+                      className="max-h-12 w-auto object-contain rounded border border-slate-700/60 shadow-inner"
+                    />
+                  ) : (
+                    <div className="py-2.5 text-center text-[10px] text-slate-600 font-mono">
+                      {sentinel.is_online ? 'Aguardando primeiro frame...' : 'Inicie a Sentinela no PC para ver a tela'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Oportunidades do Dia (Sinais da Sentinela) */}
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg min-w-0 lg:col-span-4 lg:order-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase font-mono flex items-center gap-1.5">
+                    <Zap size={14} className="text-emerald-400" /> Oportunidades do Dia
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono">
+                      {signals.length}
+                    </span>
+                  </h3>
+                  {signals.length > 0 && (
+                    <button onClick={toggleAllSignals} className="text-[10px] text-cyan-400 hover:underline font-mono">
+                      {selectedSignals.length === signals.length ? 'Desmarcar todos' : 'Marcar todos'}
+                    </button>
+                  )}
+                </div>
+
+                {signals.length === 0 ? (
+                  <div className="py-5 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+                    Nenhuma oportunidade captada hoje.<br />Inicie a <strong>Sentinela</strong> para detectar gatilhos BUY/SELL.
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                      {signals.map(sig => (
+                        <label key={sig.id} className={`p-2.5 bg-[#070d1a] border rounded-xl flex items-center gap-2.5 cursor-pointer transition-all font-mono text-xs ${selectedSignals.includes(sig.id) ? 'border-cyan-500/60' : 'border-slate-800'}`}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSignals.includes(sig.id)}
+                            onChange={() => toggleSignal(sig.id)}
+                            className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 shrink-0"
+                          />
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${sig.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                            {sig.direction}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex justify-between items-center gap-2">
+                              <strong className="text-white truncate">{sig.symbol}</strong>
+                              <span className="text-slate-500 text-[10px] shrink-0">
+                                {sig.created_at ? new Date(sig.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                              </span>
+                            </div>
+                            {sig.info && <p className="text-[10px] text-slate-400 truncate">{sig.info}</p>}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    {selectedSignals.length > 0 && (
+                      <button
+                        onClick={deleteSelectedSignals}
+                        className="mt-3 w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                        <Trash2 size={14} /> Apagar ({selectedSignals.length}) selecionada(s)
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Janelas Oficiais (Dublin) */}
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg font-mono text-xs min-w-0 lg:col-span-3 lg:order-6">
+                <h4 className="text-xs font-bold text-slate-300 uppercase mb-3 flex items-center gap-1.5">
+                  <Clock size={14} className="text-amber-400" /> Janelas Oficiais (Dublin)
+                </h4>
+                <div className="space-y-2">
+                  <div className="p-2.5 rounded-xl border bg-emerald-950/20 border-emerald-500/30 flex justify-between items-center gap-2 flex-wrap">
+                    <div>
+                      <strong className="text-emerald-300 block">08:15 – 11:00 (Londres Open)</strong>
+                      <span className="text-[10px] text-slate-400">Setup 2: London Sniper (DD Baixo)</span>
+                    </div>
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded shrink-0 whitespace-nowrap">MANHÃ</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl border bg-cyan-950/20 border-cyan-500/30 flex justify-between items-center gap-2 flex-wrap">
+                    <div>
+                      <strong className="text-cyan-300 block">18:15 – 20:45 (US Power Hour)</strong>
+                      <span className="text-[10px] text-slate-400">Setup 1: Power Hour Trend (Expansão)</span>
+                    </div>
+                    <span className="text-[9px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded shrink-0 whitespace-nowrap">TARDE</span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-slate-900/50 border border-slate-800/80 text-[10px] text-slate-400">
+                    ⚠️ <strong>Regra de Mesa:</strong> Saída compulsória de todas as ordens antes das 20h55 Dublin.
+                  </div>
+                </div>
+              </div>
+              
+              {/* Setups Fixos Oficiais */}
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg min-w-0 lg:col-span-5 lg:order-2">
+                <h3 className="text-xs font-bold text-slate-300 uppercase font-mono tracking-wider mb-3 flex items-center gap-1.5">
+                  <Award size={14} className="text-amber-400" /> Setups Campeões (Playbook Oficial)
+                </h3>
+                <div className="space-y-2.5">
+                  <div className="p-3 bg-[#070d1a] border border-cyan-500/30 rounded-xl">
+                    <div className="flex justify-between items-center mb-1">
+                      <strong className="text-xs text-cyan-300 font-mono">1. Power Hour Trend (Tarde 18h15)</strong>
+                      <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono">RR 1:1.5</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
+                      Cruzamento 9/21 ou 20/50 + FVG Formado (10 barras). Stop ATR 1.5x. Win% 51.2%, DD $500.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-[#070d1a] border border-emerald-500/30 rounded-xl">
+                    <div className="flex justify-between items-center mb-1">
+                      <strong className="text-xs text-emerald-300 font-mono">2. London Sniper (Manhã 08h15)</strong>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">RR 1:3</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
+                      Cruzamento 20/50 com Distância ≥ 0.4x ATR. Stop Fixo 15 pts. DD de apenas $200!
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-[#070d1a] border border-purple-500/30 rounded-xl">
+                    <div className="flex justify-between items-center mb-1">
+                      <strong className="text-xs text-purple-300 font-mono">3. FVG Retest Institucional</strong>
+                      <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded font-mono">RR 1:2</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
+                      Reteste em 50% CE com filtro EMA 50. Stop no Extremo do FVG + 1.5 pts.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Setups do Dia (Extraídos por IA) */}
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg min-w-0 lg:col-span-5 lg:order-5">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase font-mono flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-cyan-400" /> Setups Extraídos do Otimizador (Hoje)
+                  </h3>
+                  <button onClick={() => setActiveTab('scanner')} className="text-[10px] text-cyan-400 hover:underline font-mono">
+                    Subir Novo Print
+                  </button>
+                </div>
+
+                {scannedSetups.length === 0 ? (
+                  <div className="py-5 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+                    Nenhum setup importado hoje.<br />Vá até a aba <strong>Scanner IA</strong> e envie um print do TradingView.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {scannedSetups.map((s, idx) => (
+                      <div key={idx} className="p-3 bg-[#070d1a] border border-slate-800 rounded-xl font-mono text-xs">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-amber-400 font-bold">#{s.rank_pos || idx + 1} • {s.trigger_name} ({s.emas})</span>
+                          <span className="text-emerald-400 font-bold">+${s.net_usd} (DD: ${s.dd_usd})</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex justify-between">
+                          <span>Stop: {s.stop_type} | RR: {s.rr}</span>
+                          <span>Win: {s.win_rate} | R Tot: {s.r_total}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg min-w-0 lg:col-span-3 lg:order-3">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-xs font-bold text-slate-300 uppercase font-mono flex items-center gap-1.5">
+                    <CheckSquare size={14} className="text-emerald-400" /> Checklist Pré-Mercado
+                  </h4>
+                  <button onClick={resetChecklist} title="Resetar checklist" className="text-slate-500 hover:text-slate-300">
+                    <RefreshCw size={13} />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {checklist.map(item => (
+                    <label key={item.id} className="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={item.done} 
+                        onChange={() => toggleChecklist(item.id)}
+                        className="mt-0.5 rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0"
+                      />
+                      <span className={item.done ? 'line-through text-slate-500' : ''}>{item.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+          </div>
+
+          {/* ROTINA DAS OPERAÇÕES */}
+          <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg mt-4">
+            <h3 className="text-xs font-bold text-slate-300 uppercase font-mono tracking-wider mb-3 flex items-center gap-1.5">
+              <ListChecks size={14} className="text-cyan-400" /> Rotina das Operações
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5 font-mono">
+              <div className="p-3 bg-[#070d1a] border border-cyan-500/30 rounded-xl">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 w-5 h-5 rounded-full flex items-center justify-center shrink-0">1</span>
+                  <strong className="text-xs text-cyan-300">Varredura Macro</strong>
+                </div>
+                <ul className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <li><span className="text-slate-200">Período:</span> Tudo ou 48h • Comparar os 3 Gatilhos</li>
+                  <li><span className="text-slate-200">Pergunta:</span> quem paga mais R por trade? EMA pura ou EMA+FVG?</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-[#070d1a] border border-emerald-500/30 rounded-xl">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 w-5 h-5 rounded-full flex items-center justify-center shrink-0">2</span>
+                  <strong className="text-xs text-emerald-300">Score de Prop</strong>
+                </div>
+                <ul className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <li>Ignore o $ líquido isolado.</li>
+                  <li><span className="text-slate-200">Ratio = $ Líquido / DD $.</span></li>
+                  <li>Descarte setups com Ratio <span className="text-rose-300 font-bold">&lt; 2.0x</span>.</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-[#070d1a] border border-purple-500/30 rounded-xl">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30 w-5 h-5 rounded-full flex items-center justify-center shrink-0">3</span>
+                  <strong className="text-xs text-purple-300">Aprofundar Gatilho</strong>
+                </div>
+                <ul className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <li>Selecione o vencedor do Passo 1.</li>
+                  <li><span className="text-slate-200">Foco:</span> "Aprofundar Gatilho Atual".</li>
+                  <li>Varie distâncias (0.2x, 0.4x, 0.6x) e RR (1:1.5, 1:2, 1:3).</li>
+                </ul>
+              </div>
+              <div className="p-3 bg-[#070d1a] border border-amber-500/30 rounded-xl">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 w-5 h-5 rounded-full flex items-center justify-center shrink-0">4</span>
+                  <strong className="text-xs text-amber-300">Validação 24h</strong>
+                </div>
+                <ul className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <li><span className="text-slate-200">Período:</span> 24h — a config gerou trades positivos hoje?</li>
+                  <li>Se negativa: mercado sem liquidez ou consolidação travada.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          </>
+        )}
+
+        {/* ================= ABA 2: SCANNER IA (GROQ VISION) ================= */}
+        {activeTab === 'scanner' && (
+          <div className="max-w-3xl mx-auto space-y-5">
+            <div className="bg-[#0b1222] border border-slate-800 p-6 rounded-2xl shadow-xl text-center">
+              <div className="w-14 h-14 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Sparkles size={28} />
+              </div>
+              <h2 className="text-lg font-bold text-white mb-1">Scanner de Otimizador com Groq Vision</h2>
+              <p className="text-xs text-slate-400 mb-2 max-w-md mx-auto">
+                Tire um print da tabela do otimizador no TradingView e envie abaixo. A IA fará a leitura automática dos 3 melhores setups para a sessão.
+              </p>
+              <p className="text-[11px] text-cyan-400/80 font-mono mb-6">
+                Modelo ativo: <code className="bg-[#070d1a] px-2 py-0.5 rounded border border-cyan-500/30">{activeVisionModel}</code>
+              </p>
+
+              <div className="border-2 border-dashed border-slate-700 hover:border-cyan-500 rounded-2xl p-8 transition-all bg-[#070d1a]">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  id="print-upload" 
+                  className="hidden" 
+                  disabled={isScanning}
+                />
+                <label htmlFor="print-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                  <Upload size={32} className="text-slate-400" />
+                  <span className="text-xs font-bold text-slate-300">
+                    {isScanning ? `Analisando tabela com ${activeVisionModel}...` : "Clique para selecionar ou arraste o print da tabela"}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">PNG, JPG ou Screenshot</span>
+                </label>
+              </div>
+            </div>
+
+            {scannedSetups.length > 0 && (
+              <div className="bg-[#0b1222] border border-slate-800 p-5 rounded-2xl shadow-xl">
+                <h3 className="text-xs font-bold text-slate-300 uppercase font-mono mb-3">Setups Extraídos com Sucesso</h3>
+                <div className="space-y-3 font-mono text-xs">
+                  {scannedSetups.map((s, idx) => (
+                    <div key={idx} className="p-4 bg-[#070d1a] border border-slate-800 rounded-xl space-y-1">
+                      <div className="flex justify-between items-center">
+                        <strong className="text-cyan-300">#{s.rank_pos} • {s.trigger_name} ({s.emas})</strong>
+                        <span className="text-emerald-400 font-bold">+${s.net_usd} (DD: ${s.dd_usd})</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">Stop: {s.stop_type} | RR: {s.rr} | Win: {s.win_rate} | R Tot: {s.r_total}</p>
+                      {s.notes && <p className="text-[10px] text-slate-500 italic mt-1">{s.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= ABA 3: CONTAS DE MESA PROPRIETÁRIA ================= */}
+        {activeTab === 'accounts' && (
+          <div className="space-y-5">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-base font-bold text-white">Contas de Mesa Proprietária</h2>
+                <p className="text-xs text-slate-400 font-mono">Acompanhamento de testes, aprovações e saques</p>
+              </div>
+              <button 
+                onClick={() => setShowAddAccount(true)}
+                className="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-cyan-950/50">
+                <Plus size={15} /> Nova Conta
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {accounts.map(acc => (
+                <div key={acc.id} className="bg-[#0b1222] border border-slate-800 p-5 rounded-2xl shadow-lg font-mono">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-[10px] text-cyan-400 font-bold uppercase">{acc.firm_name}</span>
+                      <h3 className="text-sm font-bold text-white">{acc.account_name}</h3>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                      acc.status === 'APROVADO' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                      acc.status === 'REPROVADO' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                      'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {acc.status}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-xs border-t border-slate-800/80 pt-3 text-slate-300">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Tamanho:</span>
+                      <strong>${Number(acc.size_usd).toLocaleString()}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Custo Teste:</span>
+                      <strong>${acc.cost_usd || 0}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total Sacado:</span>
+                      <strong className="text-emerald-400">${acc.payout_total || 0}</strong>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal de Criação de Conta */}
+            {showAddAccount && (
+              <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <form onSubmit={handleSaveAccount} className="bg-[#0b1222] border border-slate-800 p-5 sm:p-6 rounded-2xl w-full max-w-md shadow-2xl space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                    <h3 className="text-sm font-bold text-white">Cadastrar Conta Prop</h3>
+                    <button type="button" onClick={() => setShowAddAccount(false)}><X size={18} className="text-slate-400" /></button>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Mesa Proprietária</label>
+                    <input type="text" value={accountForm.firm_name} onChange={e => setAccountForm({...accountForm, firm_name: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" required />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Identificador / Nome da Conta</label>
+                    <input type="text" value={accountForm.account_name} onChange={e => setAccountForm({...accountForm, account_name: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" required />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Tamanho ($)</label>
+                      <input type="number" value={accountForm.size_usd} onChange={e => setAccountForm({...accountForm, size_usd: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Custo ($)</label>
+                      <input type="number" value={accountForm.cost_usd} onChange={e => setAccountForm({...accountForm, cost_usd: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Status</label>
+                    <select value={accountForm.status} onChange={e => setAccountForm({...accountForm, status: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                      <option value="EM_ANDAMENTO">Em Andamento (Teste)</option>
+                      <option value="APROVADO">Aprovado (Funded)</option>
+                      <option value="REPROVADO">Reprovado</option>
+                      <option value="SACANDO">Sacando</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 font-bold text-xs text-white rounded-xl transition-all">
+                    Salvar Conta
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= ABA 4: DIÁRIO DE TRADES ================= */}
+        {activeTab === 'journal' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            
+            {/* Formulário de Registro de Trade */}
+            <div className="lg:col-span-4 bg-[#0b1222] border border-slate-800 p-5 rounded-2xl shadow-xl h-fit">
+              <h3 className="text-xs font-bold text-slate-300 uppercase font-mono mb-4 flex items-center gap-1.5">
+                <BookOpen size={14} className="text-cyan-400" /> Registrar Trade do Dia
+              </h3>
+              <form onSubmit={handleLogTrade} className="space-y-3 font-mono text-xs">
+                <div>
+                  <label className="text-slate-400 block mb-1">Setup Utilizado</label>
+                  <select value={newTrade.setup_name} onChange={e => setNewTrade({...newTrade, setup_name: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white">
+                    <option value="Setup 1 - Power Hour">Setup 1: Power Hour Trend</option>
+                    <option value="Setup 2 - London Sniper">Setup 2: London Sniper</option>
+                    <option value="Setup 3 - FVG Retest">Setup 3: FVG Retest</option>
+                    <option value="Setup Otimizado do Dia">Setup Otimizado do Dia</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-slate-400 block mb-1">Direção</label>
+                    <select value={newTrade.direction} onChange={e => setNewTrade({...newTrade, direction: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white">
+                      <option value="BUY">BUY (Compra)</option>
+                      <option value="SELL">SELL (Venda)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">Ativo</label>
+                    <input type="text" value={newTrade.symbol} onChange={e => setNewTrade({...newTrade, symbol: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-slate-400 block mb-1">Resultado (R)</label>
+                    <input type="number" step="0.1" value={newTrade.result_r} onChange={e => setNewTrade({...newTrade, result_r: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white" />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">Resultado ($)</label>
+                    <input type="number" step="1" value={newTrade.result_usd} onChange={e => setNewTrade({...newTrade, result_usd: e.target.value})} className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-slate-400 block mb-1">Anotações / Emoções</label>
+                  <textarea rows="2" value={newTrade.notes} onChange={e => setNewTrade({...newTrade, notes: e.target.value})} placeholder="Seguiu o plano? Houve hesitação?" className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2 text-white"></textarea>
+                </div>
+                <button type="submit" className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-xl transition-all">
+                  Salvar Operação
+                </button>
+              </form>
+            </div>
+
+            {/* Histórico de Operações e PnL */}
+            <div className="lg:col-span-8 space-y-4">
+              <div className="grid grid-cols-2 gap-3 font-mono">
+                <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl">
+                  <span className="text-[10px] text-slate-500 block uppercase">PnL Acumulado</span>
+                  <strong className={`text-xl ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {totalPnL >= 0 ? `+$${totalPnL}` : `-$${Math.abs(totalPnL)}`}
+                  </strong>
+                </div>
+                <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl">
+                  <span className="text-[10px] text-slate-500 block uppercase">R Total Extraído</span>
+                  <strong className={`text-xl ${totalR >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {totalR >= 0 ? `+${totalR}R` : `${totalR}R`}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="bg-[#0b1222] border border-slate-800 p-4 rounded-2xl shadow-lg">
+                <h3 className="text-xs font-bold text-slate-300 uppercase font-mono mb-3">Histórico de Trades Gravados</h3>
+                {trades.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">Nenhum trade gravado no diário ainda.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1 font-mono text-xs">
+                    {trades.map(t => (
+                      <div key={t.id} className="p-3 bg-[#070d1a] border border-slate-800 rounded-xl flex justify-between items-center">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${t.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                              {t.direction}
+                            </span>
+                            <strong className="text-white">{t.setup_name}</strong>
+                          </div>
+                          {t.notes && <p className="text-[10px] text-slate-400 mt-1">{t.notes}</p>}
+                        </div>
+                        <div className="text-right">
+                          <strong className={t.result_usd >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            {t.result_usd >= 0 ? `+$${t.result_usd}` : `-$${Math.abs(t.result_usd)}`}
+                          </strong>
+                          <span className="text-[10px] text-slate-500 block">{t.result_r}R</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        )}
+
+      </div>
+
+      {/* MODAL CONFIGURAÇÃO CHAVE GROQ */}
+      {showKeyModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b1222] border border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+              <Key size={16} className="text-cyan-400" /> Configurar Groq API Key
+            </h3>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              Cole sua chave gratuita da Groq abaixo. Ela fica salva apenas no seu navegador (<code className="text-cyan-300">localStorage</code>). Se a cota diária acabar, basta colar outra chave aqui a qualquer momento.
+            </p>
+            <input 
+              type="password" 
+              placeholder="gsk_..." 
+              value={groqKey} 
+              onChange={e => setGroqKey(e.target.value)} 
+              className="w-full bg-[#070d1a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white mb-3 font-mono"
+            />
+            <div className="flex items-center gap-2 mb-4 font-mono text-[11px]">
+              <span className={`w-2 h-2 rounded-full ${
+                groqStatus === 'ok' ? 'bg-emerald-400'
+                : groqStatus === 'error' ? 'bg-rose-500'
+                : groqStatus === 'checking' ? 'bg-cyan-400 animate-pulse'
+                : 'bg-amber-400'
+              }`} />
+              <span className={
+                groqStatus === 'ok' ? 'text-emerald-300'
+                : groqStatus === 'error' ? 'text-rose-300'
+                : groqStatus === 'checking' ? 'text-cyan-300'
+                : 'text-amber-300'
+              }>
+                {groqStatus === 'ok' ? `Chave válida — modelo: ${activeVisionModel}`
+                : groqStatus === 'error' ? 'Chave inválida ou sem conexão'
+                : groqStatus === 'checking' ? 'Validando chave...'
+                : 'Nenhuma chave configurada'}
+              </span>
+            </div>
+            {groqError && (
+              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl font-mono text-[11px] text-rose-200/90 space-y-1 break-words">
+                <div><span className="text-rose-400 font-bold">Etapa: </span>{groqError.step}</div>
+                <div><span className="text-rose-400 font-bold">HTTP: </span>{groqError.status}</div>
+                <div><span className="text-rose-400 font-bold">Detalhe: </span>{groqError.message}</div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowKeyModal(false)} className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold">
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const k = groqKey.trim();
+                  localStorage.setItem('lumi_groq_key', k);
+                  localStorage.setItem('ai_key', k);
+                  setShowKeyModal(false);
+                  const { ok, error } = await validateGroqKey(k);
+                  if (!ok && k) {
+                    setFeedback({
+                      title: "Chave Groq inválida",
+                      message: "Não foi possível conectar com essa chave. Veja o detalhe técnico abaixo.",
+                      tone: "error",
+                      detail: error ? `[${error.step}] HTTP ${error.status}: ${error.message}` : null
+                    });
+                  }
+                }} 
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold">
+                Salvar e Validar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIRMAÇÃO APAGAR OPORTUNIDADES */}
+      {showDeleteSignalsModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b1222] border border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="w-12 h-12 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mb-4">
+              <Trash2 size={24} />
+            </div>
+            <h3 className="text-sm font-bold text-white mb-2">Apagar oportunidades?</h3>
+            <p className="text-xs text-slate-400 mb-2 leading-relaxed">
+              Você está prestes a apagar <strong className="text-rose-300">{selectedSignals.length} oportunidade(s)</strong> selecionada(s) do banco de dados.
+            </p>
+            <p className="text-[11px] text-slate-500 mb-5 font-mono">
+              Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteSignalsModal(false)}
+                disabled={isDeletingSignals}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all disabled:opacity-50">
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteSelectedSignals}
+                disabled={isDeletingSignals}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50">
+                <Trash2 size={14} />
+                {isDeletingSignals ? 'Apagando...' : `Apagar (${selectedSignals.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE AVISO GENÉRICO */}
+      {feedback && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b1222] border border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 border ${feedback.tone === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'}`}>
+              {feedback.tone === 'error' ? <AlertOctagon size={24} /> : <Key size={24} />}
+            </div>
+            <h3 className="text-sm font-bold text-white mb-2">{feedback.title}</h3>
+            <p className="text-xs text-slate-400 mb-2 leading-relaxed">{feedback.message}</p>
+            {feedback.detail && (
+              <div className="mb-5 p-3 bg-slate-900/80 border border-slate-700 rounded-xl font-mono text-[11px] text-slate-300 break-words">
+                {feedback.detail}
+              </div>
+            )}
+            {!feedback.detail && <div className="mb-3" />}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setFeedback(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all">
+                Fechar
+              </button>
+              {feedback.actionLabel && (
+                <button
+                  onClick={feedback.onAction}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition-all">
+                  {feedback.actionLabel}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+</file>
+
+<file path="sentinel/web/src/index.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #030712;
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar estilizada */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+</file>
+
+<file path="sentinel/web/src/main.jsx">
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+</file>
+
+<file path="sentinel/web/.gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+</file>
+
+<file path="sentinel/web/.oxlintrc.json">
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
+</file>
+
+<file path="sentinel/web/index.html">
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Lumi Copilot • NASDAQ Prop Desk</title>
+    
+    <!-- Favicon do Navegador -->
+    <link rel="icon" type="image/png" href="/images/logo_cop_sem_fundo.png" />
+    
+    <!-- Ícone para Apple / iPhone PWA -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/pwa/ios/180.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LumiCopilot" />
+    <meta name="description" content="Lumi Copilot — Cockpit Institucional de Trading para NASDAQ" />
+
+    <!-- Cores do Sistema -->
+    <meta name="theme-color" content="#030712" />
+  </head>
+  <body class="bg-[#030712] text-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="sentinel/web/package.json">
+{
+  "name": "lumi-copilot-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.8",
+    "lucide-react": "^0.359.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.1.6",
+    "vite-plugin-pwa": "^0.19.2"
+  }
+}
+</file>
+
+<file path="sentinel/web/postcss.config.js">
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+</file>
+
+<file path="sentinel/web/README.md">
+# React + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+</file>
+
+<file path="sentinel/web/tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+</file>
+
+<file path="sentinel/web/vite.config.js">
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['images/logo_cop_sem_fundo.png'],
+      manifest: {
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        name: 'Lumi Copilot',
+        short_name: 'LumiCopilot',
+        description: 'Cockpit Institucional de Trading para NASDAQ',
+        theme_color: '#030712',
+        background_color: '#030712',
+        display: 'standalone',
+        display_override: ['window-controls-overlay', 'standalone'],
+        orientation: 'portrait-primary',
+        icons: [
+          {
+            src: '/images/pwa/android/launchericon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: '/images/pwa/android/launchericon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          },
+          {
+            src: '/images/pwa/android/launchericon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      }
+    })
+  ]
+});
+</file>
+
+<file path="sentinel/calibrator.py">
+import json
+import tkinter as tk
+import mss
+
+
+def listar_monitores():
+    """Lista os monitores com coordenadas GLOBAIS do desktop virtual."""
+    with mss.mss() as sct:
+        monitores = []
+        for i, m in enumerate(sct.monitors[1:], start=1):
+            monitores.append({
+                "index": i,
+                "left": int(m["left"]),
+                "top": int(m["top"]),
+                "width": int(m["width"]),
+                "height": int(m["height"]),
+            })
+        return monitores
+
+
+class AreaSelector:
+    def __init__(self, monitor):
+        self.monitor = monitor
+        self.root = tk.Tk()
+        self.root.overrideredirect(True)
+        w, h = monitor["width"], monitor["height"]
+        # Overlay posicionado EXATAMENTE sobre o monitor escolhido
+        # ('-fullscreen' cobriria só o monitor principal)
+        self.root.geometry(f"{w}x{h}{monitor['left']:+d}{monitor['top']:+d}")
+        self.root.attributes('-alpha', 0.3)
+        self.root.attributes('-topmost', True)
+        self.root.config(cursor="cross")
+        self.root.title(f"Calibrar — Monitor {monitor['index']} (ESC cancela)")
+
+        self.canvas = tk.Canvas(self.root, cursor="cross", bg="grey")
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.create_text(
+            12, 12, anchor="nw",
+            text=(f"MONITOR {monitor['index']} • Arraste sobre a célula de "
+                  f"status (● AGUARDANDO...) • ESC cancela"),
+            fill="white", font=("Segoe UI", 11, "bold"))
+
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.root.bind("<Escape>", lambda e: self.root.destroy())
+
+        self.start_x = None
+        self.start_y = None
+        self.rect = None
+        self.coords = None
+
+    def on_press(self, event):
+        # Coordenadas GLOBAIS (funcionam em qualquer monitor)
+        self.start_x = event.x_root
+        self.start_y = event.y_root
+        x_rel, y_rel = event.x, event.y
+        self.rect = self.canvas.create_rectangle(
+            x_rel, y_rel, x_rel + 1, y_rel + 1, outline='red', width=2)
+
+    def on_drag(self, event):
+        self.canvas.coords(self.rect, *self.rect_start_rel(event))
+
+    def rect_start_rel(self, event):
+        # Converte o ponto inicial global para relativo ao canvas
+        m = self.monitor
+        x0 = self.start_x - m["left"]
+        y0 = self.start_y - m["top"]
+        return (x0, y0, event.x, event.y)
+
+    def on_release(self, event):
+        end_x, end_y = (event.x_root, event.y_root)
+        x1 = min(self.start_x, end_x)
+        y1 = min(self.start_y, end_y)
+        x2 = max(self.start_x, end_x)
+        y2 = max(self.start_y, end_y)
+        self.coords = {"top": y1, "left": x1, "width": x2 - x1, "height": y2 - y1}
+        print(f"\n[OK] Área selecionada (Monitor {self.monitor['index']}): {self.coords}")
+
+        with open("roi_config.json", "w") as f:
+            json.dump(self.coords, f, indent=4)
+        print("[OK] Coordenadas salvas em 'roi_config.json'!")
+        self.root.destroy()
+
+if __name__ == "__main__":
+    print("=== CALIBRADOR DE ÁREA DO LUMI FVG ===")
+    monitores = listar_monitores()
+    print(f"Monitores detectados: {len(monitores)}")
+    for m in monitores:
+        print(f"  [{m['index']}] {m['width']}x{m['height']} "
+              f"(x={m['left']}, y={m['top']})")
+
+    if len(monitores) > 1:
+        while True:
+            try:
+                escolha = int(input("Calibrar em qual monitor? [1/%s]: "
+                                    % "/".join(str(m["index"]) for m in monitores))
+                              or monitores[0]["index"])
+                monitor = next(m for m in monitores if m["index"] == escolha)
+                break
+            except (ValueError, StopIteration):
+                print("Opção inválida, tente de novo.")
+    else:
+        monitor = monitores[0]
+
+    print(f"Monitor {monitor['index']} selecionado. "
+          "Arraste com o botão esquerdo sobre a célula de status "
+          "(● AGUARDANDO...) no TradingView.")
+    print("Pressione ESC para cancelar.")
+    selector = AreaSelector(monitor)
+    selector.root.mainloop()
+</file>
+
+<file path="sentinel/CRIAR_ATALHO_DESKTOP.bat">
+@echo off
+set SCRIPT="%TEMP%\%RANDOM%-%RANDOM%.vbs"
+echo Set oWS = WScript.CreateObject("WScript.Shell") >> %SCRIPT%
+echo sLinkFile = oWS.SpecialFolders("Desktop") ^& "\Lumi Sentinel.lnk" >> %SCRIPT%
+echo Set oLink = oWS.CreateShortcut(sLinkFile) >> %SCRIPT%
+echo oLink.TargetPath = "%~dp0venv\Scripts\pythonw.exe" >> %SCRIPT%
+echo oLink.Arguments = """%~dp0sentinel.py""" >> %SCRIPT%
+echo oLink.WorkingDirectory = "%~dp0" >> %SCRIPT%
+echo oLink.Description = "Lumi Copilot Vision Sentinel" >> %SCRIPT%
+echo oLink.Save >> %SCRIPT%
+cscript /nologo %SCRIPT%
+del %SCRIPT%
+echo.
+echo ========================================================
+echo [OK] Atalho 'Lumi Sentinel' criado com sucesso na Area de Trabalho!
+echo ========================================================
+pause
+</file>
+
+<file path="sentinel/requirements.txt">
+mss==9.0.1
+opencv-python==4.9.0.80
+numpy==1.26.4
+supabase==2.4.0
+pyautogui==0.9.54
+pillow==10.2.0
+</file>
+
+<file path="sentinel/roi_config.json">
+{
+    "left": -297,
+    "top": 731,
+    "width": 86,
+    "height": 22
+}
+</file>
+
+<file path="sentinel/sentinel.py">
+import os
+import sys
+import json
+import time
+import re
+import threading
+import ctypes
+import base64
+from datetime import datetime, timezone
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+import mss
+import numpy as np
+import cv2
+from supabase import create_client
+
+# 1. SUPORTE DPI DO WINDOWS (PRECISAO PIXEL-A-PIXEL)
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+# 2. DETECCAO WIN32
+try:
+    import win32gui
+    HAS_WIN32 = True
+except ImportError:
+    HAS_WIN32 = False
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "roi_config.json")
+
+SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co"
+SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM"
+supabase = create_client(SUPABASE_URL, SUPABASE_ANON)
+
+def listar_monitores():
+    """Retorna a lista de monitores via mss: [{index, left, top, width, height}].
+    left/top são coordenadas GLOBAIS do desktop virtual (podem ser negativas
+    quando o monitor 2 está à esquerda do principal)."""
+    try:
+        with mss.mss() as sct:
+            monitores = []
+            for i, m in enumerate(sct.monitors[1:], start=1):
+                monitores.append({
+                    "index": i,
+                    "left": int(m["left"]),
+                    "top": int(m["top"]),
+                    "width": int(m["width"]),
+                    "height": int(m["height"]),
+                })
+            if monitores:
+                return monitores
+    except Exception:
+        pass
+    # Fallback: apenas o monitor principal
+    user32 = ctypes.windll.user32
+    return [{
+        "index": 1,
+        "left": 0,
+        "top": 0,
+        "width": user32.GetSystemMetrics(0),
+        "height": user32.GetSystemMetrics(1),
+    }]
+
+
+def detectar_ativo_tradingview():
+    if not HAS_WIN32:
+        return "MNQ"
+
+    candidatos = []
+    def enum_cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            tit = win32gui.GetWindowText(hwnd).strip()
+            if tit and any(k in tit for k in ["TradingView", "Lumitrader", "Futures", "Index", "Nasdaq", "CME", "Chrome", "Brave", "Edge"]):
+                candidatos.append(tit)
+
+    try:
+        win32gui.EnumWindows(enum_cb, None)
+    except Exception:
+        pass
+
+    for tit in candidatos:
+        tit_upper = tit.upper()
+        if "MICRO E-MINI NASDAQ" in tit_upper or "MNQ" in tit_upper:
+            m = re.search(r"\b(MNQ[A-Z0-9!]{1,6})\b", tit_upper)
+            return m.group(1) if m else "MNQ"
+        if "E-MINI NASDAQ" in tit_upper or "NQ1!" in tit_upper or re.search(r"\bNQ[A-Z0-9!]{1,5}\b", tit_upper):
+            m = re.search(r"\b(NQ[A-Z0-9!]{1,6})\b", tit_upper)
+            return m.group(1) if m else "NQ"
+        if any(alias in tit_upper for alias in ["NAS100", "USTEC", "US100", "QQQ"]):
+            for alias in ["NAS100", "USTEC", "US100", "QQQ"]:
+                if alias in tit_upper:
+                    return alias
+
+    return "MNQ"
+
+class FullscreenCalibrator:
+    def __init__(self, parent_gui, monitor):
+        self.parent = parent_gui
+        self.monitor = monitor
+        self.top = tk.Toplevel()
+        w, h = monitor["width"], monitor["height"]
+        # Posiciona o overlay EXATAMENTE sobre o monitor escolhido.
+        # (O '-fullscreen' do tkinter cobre só o monitor principal,
+        #  por isso usamos geometry com as coordenadas globais.)
+        self.top.overrideredirect(True)
+        self.top.geometry(f"{w}x{h}{monitor['left']:+d}{monitor['top']:+d}")
+        self.top.attributes('-alpha', 0.28)
+        self.top.attributes('-topmost', True)
+        self.top.config(cursor="cross")
+        self.top.title(f"Calibrar — Monitor {monitor['index']} (ESC cancela)")
+
+        self.canvas = tk.Canvas(self.top, cursor="cross", bg="#0284c7")
+        self.canvas.pack(fill="both", expand=True)
+        # Dica fixa no canto do monitor sendo calibrado
+        self.canvas.create_text(
+            12, 12, anchor="nw",
+            text=f"MONITOR {monitor['index']} • Arraste sobre a célula de status • ESC cancela",
+            fill="white", font=("Segoe UI", 11, "bold"))
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.top.bind("<Escape>", lambda e: self.cancelar())
+        self.start_x = None
+        self.start_y = None
+        self.rect = None
+
+    def on_press(self, e):
+        # Globais (para salvar no roi_config) + relativas (para desenhar)
+        self.start_x = e.x_root
+        self.start_y = e.y_root
+        rx, ry = e.x_root - self.monitor["left"], e.y_root - self.monitor["top"]
+        self.rel_x, self.rel_y = rx, ry
+        self.rect = self.canvas.create_rectangle(rx, ry, rx + 1, ry + 1, outline='#f43f5e', width=3)
+
+    @property
+    def x(self): return self.start_x
+    @property
+    def y(self): return self.start_y
+
+    def on_drag(self, e):
+        rx = e.x_root - self.monitor["left"]
+        ry = e.y_root - self.monitor["top"]
+        self.canvas.coords(self.rect, self.rel_x, self.rel_y, rx, ry)
+
+    def on_release(self, e):
+        x1, x2 = min(self.start_x, e.x_root), max(self.start_x, e.x_root)
+        y1, y2 = min(self.start_y, e.y_root), max(self.start_y, e.y_root)
+        coords = {"left": int(x1), "top": int(y1), "width": int(x2 - x1), "height": int(y2 - y1)}
+        self.top.destroy()
+
+        if coords["width"] > 15 and coords["height"] > 10:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(coords, f, indent=4)
+            self.parent.on_calibrado(coords)
+        else:
+            self.parent.root.deiconify()
+
+    def cancelar(self):
+        self.top.destroy()
+        self.parent.root.deiconify()
+
+class SentinelApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Lumi Sentinel • Prop Desk Monitor")
+        self.root.geometry("460x620")
+        self.root.configure(bg="#070b14")
+        self.root.attributes('-topmost', True)
+
+        self.running = False
+        self.sct = mss.mss()
+        self.roi = None
+        self.ativo_atual = "MNQ"
+        self.auto_detect = True
+        self.carregar_roi()
+
+        header = tk.Frame(root, bg="#0d1527", pady=12, padx=16)
+        header.pack(fill="x")
+        tk.Label(header, text="⚡ LUMI SENTINEL", font=("Segoe UI", 12, "bold"), fg="#38bdf8", bg="#0d1527").pack(side="left")
+        self.lbl_status = tk.Label(header, text="🔴 PARADO", font=("Segoe UI", 9, "bold"), fg="#f87171", bg="#0d1527")
+        self.lbl_status.pack(side="right")
+
+        main = tk.Frame(root, bg="#070b14", padx=16, pady=12)
+        main.pack(fill="both", expand=True)
+
+        self.lbl_dimensoes = tk.Label(main, text="IMAGEM DA LEITURA (TAMANHO REAL):", font=("Segoe UI", 8, "bold"), fg="#94a3b8", bg="#070b14")
+        self.lbl_dimensoes.pack(anchor="w")
+
+        self.box_img = tk.Frame(main, bg="#020617", bd=2, relief="groove", height=110)
+        self.box_img.pack(fill="x", pady=(5, 12))
+        self.box_img.pack_propagate(False)
+
+        self.lbl_img = tk.Label(self.box_img, bg="#020617", text="Selecione a célula de Status (CALIBRAR)", fg="#64748b", font=("Segoe UI", 9))
+        self.lbl_img.pack(fill="both", expand=True)
+
+        info = tk.Frame(main, bg="#0d1527", padx=14, pady=10)
+        info.pack(fill="x", pady=(0, 15))
+
+        ativo_frame = tk.Frame(info, bg="#0d1527")
+        ativo_frame.pack(fill="x")
+        tk.Label(ativo_frame, text="Ativo Monitorado:", font=("Segoe UI", 9, "bold"), fg="#94a3b8", bg="#0d1527").pack(side="left")
+        self.lbl_ativo_display = tk.Label(ativo_frame, text=self.ativo_atual, font=("Segoe UI", 11, "bold"), fg="#c084fc", bg="#0d1527")
+        self.lbl_ativo_display.pack(side="left", padx=8)
+
+        self.btn_modo_ativo = tk.Button(ativo_frame, text="[MODO AUTO: ATIVO]", font=("Segoe UI", 8, "bold"), bg="#1e293b", fg="#34d399", relief="flat", padx=6, pady=1, command=self.toggle_modo_ativo)
+        self.btn_modo_ativo.pack(side="right")
+
+        self.lbl_estado = tk.Label(info, text="Estado: Aguardando...", font=("Segoe UI", 9), fg="#ffffff", bg="#0d1527")
+        self.lbl_estado.pack(anchor="w", pady=(6, 0))
+
+        self.lbl_gatilho = tk.Label(info, text="Último Sinal: Nenhum", font=("Segoe UI", 9), fg="#94a3b8", bg="#0d1527")
+        self.lbl_gatilho.pack(anchor="w", pady=(2, 0))
+
+        self.btn_calib = tk.Button(main, text="🎯 1. CALIBRAR CÉLULA DE STATUS", font=("Segoe UI", 10, "bold"), bg="#1e293b", fg="#38bdf8", relief="flat", pady=10, command=self.calibrar, cursor="hand2")
+        self.btn_calib.pack(fill="x", pady=(0, 8))
+
+        self.btn_run = tk.Button(main, text="▶️ 2. INICIAR SENTINELA", font=("Segoe UI", 10, "bold"), bg="#10b981", fg="#ffffff", relief="flat", pady=10, command=self.toggle_run, cursor="hand2")
+        self.btn_run.pack(fill="x")
+
+        self.root.after(300, self.atualizar_preview_loop)
+
+    def toggle_modo_ativo(self):
+        self.auto_detect = not self.auto_detect
+        self.btn_modo_ativo.config(
+            text="[MODO AUTO: ATIVO]" if self.auto_detect else "[MODO AUTO: MANUAL]",
+            fg="#34d399" if self.auto_detect else "#f87171"
+        )
+
+    def carregar_roi(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r") as f:
+                    self.roi = json.load(f)
+            except Exception:
+                self.roi = None
+
+    def calibrar(self):
+        monitores = listar_monitores()
+        if len(monitores) == 1:
+            self.abrir_overlay(monitores[0])
+        else:
+            self.escolher_monitor(monitores)
+
+    def escolher_monitor(self, monitores):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Calibrar — Escolher monitor")
+        dlg.configure(bg="#0d1527")
+        dlg.attributes('-topmost', True)
+        dlg.resizable(False, False)
+        # Centraliza o diálogo no monitor principal
+        dlg.geometry("+%d+%d" % (
+            self.root.winfo_screenwidth() // 2 - 190,
+            self.root.winfo_screenheight() // 2 - 110))
+
+        tk.Label(dlg, text="Em qual monitor está o TradingView?",
+                 font=("Segoe UI", 10, "bold"), fg="#e2e8f0", bg="#0d1527"
+                 ).pack(padx=20, pady=(16, 10))
+
+        var = tk.IntVar(value=monitores[0]["index"])
+        for m in monitores:
+            texto = (f"Monitor {m['index']} — {m['width']}x{m['height']} "
+                     f"(x={m['left']}, y={m['top']})")
+            tk.Radiobutton(dlg, text=texto, variable=var, value=m["index"],
+                           font=("Segoe UI", 9), fg="#e2e8f0", bg="#0d1527",
+                           selectcolor="#1e293b", activebackground="#0d1527",
+                           activeforeground="#38bdf8", anchor="w"
+                           ).pack(fill="x", padx=20, pady=2)
+
+        btns = tk.Frame(dlg, bg="#0d1527")
+        btns.pack(fill="x", padx=20, pady=14)
+        tk.Button(btns, text="Cancelar", font=("Segoe UI", 9),
+                  bg="#1e293b", fg="#94a3b8", relief="flat", padx=12, pady=6,
+                  command=dlg.destroy).pack(side="left")
+        tk.Button(btns, text="Calibrar este monitor ➜", font=("Segoe UI", 9, "bold"),
+                  bg="#0284c7", fg="#ffffff", relief="flat", padx=12, pady=6,
+                  command=lambda: (dlg.destroy(),
+                                   self.abrir_overlay(
+                                       next(m for m in monitores
+                                            if m["index"] == var.get())))
+                  ).pack(side="right")
+
+    def abrir_overlay(self, monitor):
+        self.root.withdraw()
+        self.root.after(400, lambda: FullscreenCalibrator(self, monitor))
+
+    def on_calibrado(self, coords):
+        self.roi = coords
+        self.root.deiconify()
+        self.lbl_dimensoes.config(text=f"IMAGEM DA LEITURA ({coords['width']}x{coords['height']} px):")
+        self.render_preview()
+
+    def processar_imagem_preview(self, shot):
+        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        w_orig, h_orig = img.size
+        fator = min(420 / w_orig, 100 / h_orig, 3.0)
+        novo_w = max(int(w_orig * fator), 50)
+        novo_h = max(int(h_orig * fator), 40)
+        return ImageTk.PhotoImage(img.resize((novo_w, novo_h), Image.Resampling.LANCZOS))
+
+    def render_preview(self):
+        if not self.roi: return
+        try:
+            shot = self.sct.grab(self.roi)
+            tk_img = self.processar_imagem_preview(shot)
+            self.lbl_img.config(image=tk_img, text="")
+            self.lbl_img.image = tk_img
+        except Exception:
+            pass
+
+    def checar_ativo_em_tempo_real(self):
+        if self.auto_detect:
+            novo = detectar_ativo_tradingview()
+            if novo and novo != self.ativo_atual:
+                self.ativo_atual = novo
+                self.lbl_ativo_display.config(text=self.ativo_atual)
+
+    def atualizar_preview_loop(self):
+        self.checar_ativo_em_tempo_real()
+        if self.roi and not self.running:
+            self.render_preview()
+        self.root.after(800, self.atualizar_preview_loop)
+
+    def toggle_run(self):
+        if not self.running:
+            if not self.roi:
+                messagebox.showwarning("Aviso", "Calibre a área de status primeiro!")
+                return
+            self.running = True
+            self.lbl_status.config(text="🟢 VIGIANDO TELA", fg="#34d399")
+            self.btn_run.config(text="⏸️ PAUSAR SENTINELA", bg="#eab308")
+            threading.Thread(target=self.loop_worker, daemon=True).start()
+        else:
+            self.running = False
+            self.lbl_status.config(text="🔴 PARADO", fg="#f87171")
+            self.btn_run.config(text="▶️ INICIAR SENTINELA", bg="#10b981")
+
+    def classificar_estado(self, frame_bgr):
+        hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+        total_pixels = frame_bgr.shape[0] * frame_bgr.shape[1]
+        if total_pixels == 0:
+            return "AGUARDANDO FVG"
+
+        mask_red1 = cv2.inRange(hsv, np.array([0, 110, 70]), np.array([12, 255, 255]))
+        mask_red2 = cv2.inRange(hsv, np.array([168, 110, 70]), np.array([180, 255, 255]))
+        mask_red = mask_red1 | mask_red2
+        mask_green = cv2.inRange(hsv, np.array([35, 110, 70]), np.array([85, 255, 255]))
+
+        red_count = cv2.countNonZero(mask_red)
+        green_count = cv2.countNonZero(mask_green)
+        pct_red = red_count / total_pixels
+        pct_green = green_count / total_pixels
+
+        if pct_red > 0.12 and pct_red > (pct_green * 1.5):
+            return "SELL"
+        elif pct_green > 0.12 and pct_green > (pct_red * 1.5):
+            return "BUY"
+
+        return "AGUARDANDO FVG"
+
+    def loop_worker(self):
+        last_state = "IDLE"
+        last_hb = 0
+
+        while self.running:
+            try:
+                self.checar_ativo_em_tempo_real()
+                shot = self.sct.grab(self.roi)
+                frame = np.array(shot)
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
+                tk_img = self.processar_imagem_preview(shot)
+                self.lbl_img.config(image=tk_img, text="")
+                self.lbl_img.image = tk_img
+
+                estado_atual = self.classificar_estado(frame_bgr)
+                self.lbl_estado.config(text=f"Estado: {estado_atual}")
+
+                # Heartbeat + Envio da imagem ao vivo em Base64 a cada 1.5s
+                agora = time.time()
+                if agora - last_hb >= 1.5:
+                    last_hb = agora
+                    try:
+                        # Comprime em JPEG leve com 65% de qualidade (~800 bytes)
+                        _, buf = cv2.imencode('.jpg', frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
+                        b64_img = f"data:image/jpeg;base64,{base64.b64encode(buf).decode('utf-8')}"
+
+                        supabase.table("sentinel_status_cop").update({
+                            "is_online": True,
+                            "current_state": estado_atual,
+                            "last_seen": datetime.now(timezone.utc).isoformat(),
+                            "monitored_symbol": self.ativo_atual,
+                            "preview_base64": b64_img
+                        }).eq("id", 1).execute()
+                    except Exception:
+                        pass
+
+                # Disparo de Novo Trade na Mudança de Estado
+                if estado_atual != last_state:
+                    if estado_atual in ["BUY", "SELL"]:
+                        cor = "#34d399" if estado_atual == "BUY" else "#f87171"
+                        hora = datetime.now().strftime("%H:%M:%S")
+                        self.lbl_gatilho.config(text=f"Sinal: {estado_atual} em {self.ativo_atual} ({hora})", fg=cor)
+
+                        supabase.table("lumi_signals_cop").insert({
+                            "symbol": self.ativo_atual,
+                            "direction": estado_atual,
+                            "status": "ACTIVE",
+                            "info": f"Gatilho confirmado ({self.ativo_atual})"
+                        }).execute()
+
+                    last_state = estado_atual
+
+                time.sleep(0.3)
+            except Exception:
+                time.sleep(1)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SentinelApp(root)
+    root.mainloop()
+</file>
+
+<file path=".gitignore">
+# Node
+node_modules/
+**/node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python
+venv/
+**/venv/
+env/
+__pycache__/
+*.pyc
+.env
+
+# Logs e sistema
+.DS_Store
+Thumbs.db
+*.log
+repomix-output.xml
+**/repomix-output.xml
+</file>
+
+<file path="banco.sql">
+-- ========================================================
+-- LUMI COPILOT - ESTRUTURA COMPLETA SUPABASE (_cop)
+-- ========================================================
+
+-- 1. LIMPEZA DE TABELAS ANTIGAS (SE EXISTIREM)
+DROP TABLE IF EXISTS lumi_signals CASCADE;
+DROP TABLE IF EXISTS sentinel_status CASCADE;
+DROP TABLE IF EXISTS trade_logs_cop CASCADE;
+DROP TABLE IF EXISTS account_payouts_cop CASCADE;
+DROP TABLE IF EXISTS prop_accounts_cop CASCADE;
+DROP TABLE IF EXISTS daily_setups_cop CASCADE;
+DROP TABLE IF EXISTS daily_checklist_cop CASCADE;
+DROP TABLE IF EXISTS lumi_signals_cop CASCADE;
+DROP TABLE IF EXISTS sentinel_status_cop CASCADE;
+
+-- 2. STATUS DA SENTINELA PYTHON (HEARTBEAT)
+CREATE TABLE sentinel_status_cop (
+    id INT PRIMARY KEY DEFAULT 1,
+    is_online BOOLEAN DEFAULT FALSE,
+    current_state TEXT DEFAULT 'DESCONECTADO',
+    monitored_symbol TEXT DEFAULT 'MNQ',
+    last_seen TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Insere o registro singleton de status
+INSERT INTO sentinel_status_cop (id, is_online, current_state, monitored_symbol)
+VALUES (1, FALSE, 'DESCONECTADO', 'MNQ')
+ON CONFLICT (id) DO NOTHING;
+
+-- 3. SINAIS DISPARADOS PELA SENTINELA (OPENCV)
+CREATE TABLE lumi_signals_cop (
+    id BIGSERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL, -- 'BUY' ou 'SELL'
+    status TEXT DEFAULT 'ACTIVE',
+    info TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. CONTAS DE MESA PROPRIETÁRIA
+CREATE TABLE prop_accounts_cop (
+    id BIGSERIAL PRIMARY KEY,
+    firm_name TEXT NOT NULL, -- Ex: 'Apex', 'Topstep', 'FTMO'
+    account_name TEXT NOT NULL, -- Ex: 'APEX-50K-01'
+    size_usd NUMERIC NOT NULL DEFAULT 50000,
+    cost_usd NUMERIC DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'EM_ANDAMENTO', -- 'EM_ANDAMENTO', 'APROVADO', 'REPROVADO', 'SACANDO'
+    payout_total NUMERIC DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. HISTÓRICO DE SAQUES (PAYOUTS)
+CREATE TABLE account_payouts_cop (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT REFERENCES prop_accounts_cop(id) ON DELETE CASCADE,
+    amount_usd NUMERIC NOT NULL,
+    payout_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. DIÁRIO DE TRADES / OPERAÇÕES
+CREATE TABLE trade_logs_cop (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT REFERENCES prop_accounts_cop(id) ON DELETE SET NULL,
+    symbol TEXT NOT NULL DEFAULT 'MNQ',
+    direction TEXT NOT NULL, -- 'BUY' ou 'SELL'
+    setup_name TEXT, -- Ex: 'Setup 1 - Power Hour', 'Setup 2 - London Sniper'
+    result_r NUMERIC DEFAULT 0,
+    result_usd NUMERIC DEFAULT 0,
+    rule_respected BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. SETUPS DO DIA (SALVOS OU EXTRAÍDOS PELO GROQ)
+CREATE TABLE daily_setups_cop (
+    id BIGSERIAL PRIMARY KEY,
+    date DATE DEFAULT CURRENT_DATE,
+    rank_pos INT DEFAULT 1,
+    emas TEXT,
+    trigger_name TEXT,
+    sub_mode TEXT,
+    dist TEXT,
+    stop_type TEXT,
+    rr TEXT,
+    win_rate TEXT,
+    r_total TEXT,
+    net_usd NUMERIC,
+    dd_usd NUMERIC,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. CHECKLIST DIÁRIO DE DISCIPLINA E ROTINA
+CREATE TABLE daily_checklist_cop (
+    id BIGSERIAL PRIMARY KEY,
+    date DATE UNIQUE DEFAULT CURRENT_DATE,
+    items JSONB DEFAULT '{}'::jsonb,
+    day_notes TEXT,
+    day_pnl_usd NUMERIC DEFAULT 0,
+    day_pnl_r NUMERIC DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. PERMISSÕES RLS (LIBERAÇÃO PARA CHAVE ANON DO CLIENT)
+ALTER TABLE sentinel_status_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lumi_signals_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prop_accounts_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE account_payouts_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trade_logs_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_setups_cop ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_checklist_cop ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public all sentinel_status_cop" ON sentinel_status_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all lumi_signals_cop" ON lumi_signals_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all prop_accounts_cop" ON prop_accounts_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all account_payouts_cop" ON account_payouts_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all trade_logs_cop" ON trade_logs_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all daily_setups_cop" ON daily_setups_cop FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all daily_checklist_cop" ON daily_checklist_cop FOR ALL USING (true) WITH CHECK (true);
+
+-- 10. HABILITA REALTIME
+ALTER PUBLICATION supabase_realtime ADD TABLE sentinel_status_cop;
+ALTER PUBLICATION supabase_realtime ADD TABLE lumi_signals_cop;
+ALTER TABLE sentinel_status_cop ADD COLUMN IF NOT EXISTS preview_base64 TEXT;
+</file>
+
+<file path="diario.md">
+# 📓 DIÁRIO DE BORDO & PLAYBOOK DE OPERAÇÕES - LUMI COPILOT
+
+**Trader Operador:** Mesa Proprietária NASDAQ (NQ / MNQ)  
+**Base Geográfica:** Dublin, Irlanda (Fuso: GMT / IST)  
+**Janelas Oficiais de Operação:**
+- **Manhã (Londres):** 08h15 às 11h00 (Dublin)
+- **Tarde (Wall Street Power Hour):** 18h15 às 20h45 (Dublin)  
+*(Estudos: 13h00 às 17h00 - Sem exposição de ordens durante a abertura de NY)*
+
+---
+
+## 🏛️ REGRAS DE OURO PARA MESA PROPRIETÁRIA (APEX / TOPSTEP / MFF)
+
+1. **Risco Máximo por Operação (1R):** $100 fixos.
+   - Stop de 15 pontos no MNQ = 10 contratos ($100).
+   - Stop de 15 pontos no NQ = 0.33 (operar apenas MNQ para precisão de lote).
+2. **Limite de Perda Diária:** Parar o dia imediatamente ao atingir -$300 (3 derrotas seguidas).
+3. **Trailing Drawdown:** Jamais tentar recuperar loss durante o horário do almoço de NY (17h-18h Dublin).
+4. **Fechamento Obrigatório:** Nenhuma posição pode ficar aberta após as 20h55 de Dublin (15h55 NY). Risco de quebra imediata da conta por regra de *overnight*.
+5. **Notícias 3 Estrelas:** Zerar ou pausar 5 minutos antes de eventos HIGH de USD (CPI, FOMC, NFP).
+
+---
+
+## 🧭 CHANGELOG E RODADAS DE DESENVOLVIMENTO
+
+### [Round 3] - Conclusão do Cockpit Integrado
+- **Novo Banco de Dados:** Criadas tabelas com sufixo `_cop` para isolar dados de testes anteriores.
+- **Leitor de Notícias 3 Estrelas:** Conectado à API oficial e gratuita da FairEconomy/ForexFactory. Alerta sonoro duplo e distintivo para notícias de alto impacto em USD e EUR.
+- **Scanner Groq Vision:** Leitura com 1 clique de prints do otimizador do TradingView usando `llama-3.2-11b-vision-preview`, extraindo os melhores setups em JSON estrito.
+- **Gestão de Contas de Mesa:** Módulo completo para acompanhar tamanho da conta, custo do teste, status de aprovação e histórico de saques realizados.
+- **Diário de Trades:** Registro de operações com verificação de disciplina e cálculo automático de R e financeiro.
+- **Atualização da Sentinela Python:** Ajustado `sentinel.py` para sincronizar exclusivamente nas tabelas `_cop`.
+</file>
+
+<file path="netlify.toml">
+[build]
+  base = "sentinel/web"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+</file>
+
+</files>
